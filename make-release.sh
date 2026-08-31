@@ -43,19 +43,20 @@ OTA_SIZE=$(wc -c < "docs/$NAME.ota.bin" | tr -d ' ')
 OTA_MD5=$(md5of "docs/$NAME.ota.bin")
 echo "  ota      $OTA_SIZE bytes  md5 $OTA_MD5"
 
-PARTS=""
-if [ -n "$FACTORY" ] && [ -f "$FACTORY" ]; then
-  cp "$FACTORY" "docs/$NAME.factory.bin"
-  F_SIZE=$(wc -c < "docs/$NAME.factory.bin" | tr -d ' ')
-  [ "$F_SIZE" -gt 100000 ] || { echo "factory image looks truncated ($F_SIZE bytes)"; exit 1; }
-  echo "  factory  $F_SIZE bytes"
-  PARTS='
+# Both images are required. A release with only an OTA image cannot be put on
+# a blank board, which is the whole point of publishing one.
+[ -n "$FACTORY" ] && [ -f "$FACTORY" ] || {
+  echo "No factory image found - every release must ship both."
+  echo "Expected $BUILD/firmware.factory.bin, or pass it as the third argument."
+  exit 1; }
+cp "$FACTORY" "docs/$NAME.factory.bin"
+F_SIZE=$(wc -c < "docs/$NAME.factory.bin" | tr -d ' ')
+[ "$F_SIZE" -gt 100000 ] || { echo "factory image looks truncated ($F_SIZE bytes)"; exit 1; }
+echo "  factory  $F_SIZE bytes"
+PARTS='
       "parts": [
         { "path": "'"$NAME"'.factory.bin", "offset": 0 }
       ],'
-else
-  echo "  factory  (none - browser flashing will not be offered)"
-fi
 
 # Each release also gets its own directory. Pointing a device's "Update
 # Manifest URL" at one of these pins it to that version - and because the
@@ -109,5 +110,29 @@ echo "  pinned copy in $VDIR/"
   done
 } > docs/VERSIONS.md
 echo "  wrote docs/VERSIONS.md"
+
+# Every file a manifest points at must exist AND be committable. A blanket
+# *.bin rule in .gitignore silently drops these, and the failure only shows up
+# as a 404 on the device hours later - so check it here instead.
+echo
+fail=0
+for M in docs/manifest.json "$VDIR/manifest.json"; do
+  DIR=$(dirname "$M")
+  for REF in $(python3 -c "
+import json,sys
+d=json.load(open('$M'))
+b=d['builds'][0]
+print(b['ota']['path'])
+for p in b.get('parts',[]): print(p['path'])
+"); do
+    if [ ! -f "$DIR/$REF" ]; then
+      echo "  MISSING: $DIR/$REF (referenced by $M)"; fail=1
+    elif git check-ignore -q "$DIR/$REF" 2>/dev/null; then
+      echo "  IGNORED BY GIT: $DIR/$REF - it would 404 once published"
+      echo "                  $(git check-ignore -v "$DIR/$REF")"; fail=1
+    fi
+  done
+done
+[ "$fail" = 0 ] && echo "  all referenced images present and committable" || exit 1
 echo
 echo "Next: commit docs/ and push."
