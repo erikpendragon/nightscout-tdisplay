@@ -335,6 +335,23 @@ Updating replaces only the application. Your wifi, Nightscout URL, token and
 thresholds live in a separate flash area and are untouched — which is also why
 an update can never carry one person's settings onto another person's device.
 
+### Staying on a version, or going back to one
+
+Every release also publishes its own manifest, so the device does not have to
+follow the newest build:
+
+| Point **Update Manifest URL** at | Behaviour |
+|---|---|
+| `…/nightscout-tdisplay/manifest.json` | follows the latest release (default) |
+| `…/nightscout-tdisplay/v1.0.1/manifest.json` | pinned to 1.0.1, ignores anything newer |
+
+Setting it to an *older* version downgrades: the device compares versions by
+string equality rather than ordering, so it treats "different" as "update
+available" and installs it. That is also why a pinned device stays put — the
+manifest it is watching never changes.
+
+[`docs/VERSIONS.md`](docs/VERSIONS.md) lists what is available.
+
 ### Publishing your own builds
 
 `./make-release.sh "what changed"` does all of this: it copies both images

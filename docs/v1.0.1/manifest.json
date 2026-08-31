@@ -1,0 +1,19 @@
+{
+  "name": "CGM Display",
+  "version": "1.0.1",
+  "home_assistant_domain": "esphome",
+  "new_install_prompt_erase": false,
+  "builds": [
+    {
+      "chipFamily": "ESP32",
+      "parts": [
+        { "path": "cgm-display.factory.bin", "offset": 0 }
+      ],
+      "ota": {
+        "path": "cgm-display.ota.bin",
+        "md5": "c5abaa16308b9c1cb303b6a73e38a330",
+        "summary": "Factory Reset button; offline web UI; reservoir folded into pod; sensor life 264h"
+      }
+    }
+  ]
+}

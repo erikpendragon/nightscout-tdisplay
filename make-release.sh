@@ -57,7 +57,17 @@ else
   echo "  factory  (none - browser flashing will not be offered)"
 fi
 
-cat > docs/manifest.json <<JSON
+# Each release also gets its own directory. Pointing a device's "Update
+# Manifest URL" at one of these pins it to that version - and because the
+# component compares versions by string equality rather than ordering, an
+# older one installs happily, so this is also how you downgrade.
+VDIR="docs/v$VERSION"
+mkdir -p "$VDIR"
+cp "docs/$NAME.ota.bin" "$VDIR/"
+[ -f "docs/$NAME.factory.bin" ] && cp "docs/$NAME.factory.bin" "$VDIR/"
+
+write_manifest() {  # $1 destination
+cat > "$1" <<JSON
 {
   "name": "CGM Display",
   "version": "$VERSION",
@@ -75,6 +85,29 @@ cat > docs/manifest.json <<JSON
   ]
 }
 JSON
-python3 -c "import json;json.load(open('docs/manifest.json'))" && echo "  manifest.json valid"
+}
+write_manifest docs/manifest.json
+write_manifest "$VDIR/manifest.json"
+python3 -c "import json;json.load(open('docs/manifest.json'))" >/dev/null && echo "  manifest.json valid"
+echo "  pinned copy in $VDIR/"
+
+# Regenerate the version index so the available builds are discoverable.
+{
+  echo "# Available firmware versions"
+  echo
+  echo "The device follows \`manifest.json\` and always offers the newest build."
+  echo "To pin it to a particular version - or to go back to an older one - set"
+  echo "**Update Manifest URL** on the device's web page to that version's"
+  echo "manifest. It will then stay there until you point it somewhere else."
+  echo
+  echo "| Version | Manifest URL to pin to | Full image |"
+  echo "|---|---|---|"
+  for d in $(ls -d docs/v*/ 2>/dev/null | sort -Vr); do
+    v=$(basename "$d"); v=${v#v}
+    base="https://erikpendragon.github.io/nightscout-tdisplay/v$v"
+    echo "| \`$v\` | \`$base/manifest.json\` | [factory.bin]($base/$NAME.factory.bin) |"
+  done
+} > docs/VERSIONS.md
+echo "  wrote docs/VERSIONS.md"
 echo
 echo "Next: commit docs/ and push."
