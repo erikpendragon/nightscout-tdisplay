@@ -5,6 +5,9 @@ secrets.yaml
 .esphome/
 *.bin
 *.elf
+# ...but the released firmware DOES belong in the repo - it is what GitHub
+# Pages serves as the update channel, and *.bin above would silently drop it.
+!docs/*.ota.bin
 
 # Editors / OS
 .DS_Store
