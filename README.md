@@ -418,7 +418,15 @@ or issue a read-only token and paste it into the token field.
 
 ## Licence
 
-MIT. See [LICENSE](LICENSE).
+**GPLv3.** See [LICENSE](LICENSE), and [NOTICE](NOTICE) for why.
+
+Short version: the firmware images link ESPHome's C++ runtime, which is
+GPLv3, so the binaries are GPLv3 whatever this repository claims. Licensing
+the whole project GPLv3 makes the source and the binaries agree.
+
+You may use, modify and redistribute this, including commercially. If you
+distribute it you must pass on the complete corresponding source under the
+same terms.
 
 Not affiliated with Nightscout, Dexcom, Insulet or Glooko. Nightscout is a
 community project; this is a small client for it.

@@ -1,3 +1,12 @@
+/*
+ * Nightscout T-Display - a standalone Nightscout glucose display
+ * Copyright (C) 2026 erikpendragon
+ *
+ * This program is free software: you can redistribute it and/or modify it
+ * under the terms of the GNU General Public License as published by the Free
+ * Software Foundation, either version 3 of the License, or (at your option)
+ * any later version. See LICENSE, and NOTICE for the ESPHome relationship.
+ */
 // Two bits of UI behaviour ESPHome's web server has no option for.
 //
 //  1. While "Use Nightscout Thresholds" is on, the four glucose thresholds are

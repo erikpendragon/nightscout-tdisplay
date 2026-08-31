@@ -1,0 +1,59 @@
+Nightscout T-Display
+Copyright (C) 2026 erikpendragon
+
+This program is free software: you can redistribute it and/or modify it under
+the terms of the GNU General Public License as published by the Free Software
+Foundation, either version 3 of the License, or (at your option) any later
+version. See LICENSE.
+
+
+Why GPLv3 and not something more permissive
+-------------------------------------------
+
+The published firmware images are built with ESPHome, and ESPHome's C++
+runtime - which every build links - is GPLv3:
+
+    "The C++/runtime codebase of the ESPHome project (file extensions .c,
+     .cpp, .h, .hpp, .tcc, .ino) are published under the GPLv3 license. The
+     python codebase and all other parts of this codebase are published under
+     the MIT license."
+    -- https://github.com/esphome/esphome/blob/dev/LICENSE
+
+So cgm-display.ota.bin and cgm-display.factory.bin are derivative works of
+GPLv3 code no matter what this repository says. Licensing the whole project
+GPLv3 makes the source and the binaries agree, rather than shipping an MIT
+notice over files that are not MIT.
+
+A practical consequence worth stating plainly: this licence does not stop
+anyone selling this, and it cannot - GPLv3 forbids adding restrictions of that
+kind, and ESPHome's licence is not ours to change. What it does require is
+that anyone who distributes it, for money or not, passes on the complete
+corresponding source under the same terms.
+
+
+Third-party components
+----------------------
+
+ESPHome - https://github.com/esphome/esphome
+    C++/runtime under GPLv3, Python tooling under MIT. Linked into every
+    firmware image. Corresponding source is available from the project above;
+    the exact version used for a build is printed in its own logs at boot.
+
+ESPHome web UI - https://github.com/esphome/esphome-webserver
+    Fetched at build time by build-webui.sh and served by the device so its
+    configuration page works without internet access. Not redistributed in
+    this repository; web-ui.js is generated and gitignored.
+
+Roboto - https://fonts.google.com/specimen/Roboto
+    Apache License 2.0. Fetched at build time and embedded as glyph bitmaps.
+
+Material Design Icons webfont
+    https://github.com/Templarian/MaterialDesign-Webfont
+    Apache License 2.0. Fetched at build time; the trend arrows are drawn from
+    it. Embedded as glyph bitmaps.
+
+
+Not affiliated with Nightscout, Dexcom, Insulet or Glooko. Nightscout is a
+community project; this is a small client for it.
+
+NOT A MEDICAL DEVICE. See the warning at the top of README.md.

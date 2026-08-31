@@ -1,3 +1,7 @@
+/*
+ * Nightscout T-Display - Copyright (C) 2026 erikpendragon
+ * Licensed under the GNU General Public License v3 or later. See LICENSE.
+ */
 #pragma once
 #include <cstdio>
 #include <string>

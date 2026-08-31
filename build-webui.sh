@@ -1,4 +1,16 @@
 #!/bin/bash
+# Nightscout T-Display - a standalone Nightscout glucose display
+# Copyright (C) 2026 erikpendragon
+#
+# This program is free software: you can redistribute it and/or modify it
+# under the terms of the GNU General Public License as published by the Free
+# Software Foundation, either version 3 of the License, or (at your option)
+# any later version. See LICENSE, and NOTICE for the ESPHome relationship.
+#
+# Distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY -
+# without even the implied warranty of MERCHANTABILITY or FITNESS FOR A
+# PARTICULAR PURPOSE. NOT A MEDICAL DEVICE.
+
 # Builds web-ui.js = ESPHome's own web UI bundle + cgm-ui.js.
 #
 # Why: the config page has to work with no internet. ESPHome's `local: true`
