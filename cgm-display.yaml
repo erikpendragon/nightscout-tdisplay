@@ -110,7 +110,7 @@ esphome:
   friendly_name: ${friendly_name}
   project:
     name: "erikpendragon.cgm-display"
-    version: "1.0.9"
+    version: "1.0.10"
   on_boot:
     priority: -100
     then:
