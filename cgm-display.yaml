@@ -110,7 +110,7 @@ esphome:
   friendly_name: ${friendly_name}
   project:
     name: "erikpendragon.cgm-display"
-    version: "1.0.7"
+    version: "1.0.8"
   on_boot:
     priority: -100
     then:
@@ -151,6 +151,9 @@ ota:
   #   password: !secret cgm_display_ota_password
   # if you would rather not.
   - platform: esphome
+    # Given an id so a local config can add a password without forking this
+    # file:  ota: [ - id: !extend ota_esphome, password: !secret ... ]
+    id: ota_esphome
   # backend for the update entity below - no password of its own
   - platform: http_request
 
