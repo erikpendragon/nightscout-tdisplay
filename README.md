@@ -214,7 +214,35 @@ After this the device updates itself — it checks the manifest every six hours
 and offers new versions on its own web page. You never need to touch a cable
 again.
 
-### 2. Build it yourself with ESPHome
+### 2. Follow this repo from your own ESPHome
+
+If you already run ESPHome, you do not need a copy of the config at all —
+point at this repo and it stays current:
+
+```yaml
+packages:
+  nightscout_tdisplay:
+    url: https://github.com/erikpendragon/nightscout-tdisplay
+    ref: main
+    files: [cgm-display.yaml]
+    refresh: 1d
+```
+
+Two support files must sit next to that stub, because ESPHome resolves
+`includes:` and `js_include:` relative to your config directory rather than
+the downloaded package: copy `version_compare.h` from this repo, and generate
+`web-ui.js` with `./build-webui.sh`.
+
+The published config carries no credentials. To add an OTA password without
+forking the file:
+
+```yaml
+ota:
+  - id: !extend ota_esphome
+    password: !secret my_ota_password
+```
+
+### 3. Build it yourself with ESPHome
 
 Worth doing if you want to change anything. You need
 [ESPHome](https://esphome.io) — **the CLI on its own is enough**:
