@@ -1,0 +1,344 @@
+# Nightscout T-Display
+
+A standalone glucose display for a **LilyGO T-Display** (ESP32, 135×240 colour
+LCD, about $12). It reads a Nightscout site directly over HTTP and shows the
+current value, trend, recent history, treatments and time-in-range on a little
+screen you can leave on a desk or nightstand.
+
+No Home Assistant, no MQTT, no broker, no cloud account, no phone app open in
+the background. Wifi and a Nightscout URL, and it works.
+
+> ## This is not a medical device
+>
+> Every number on this screen is already several minutes old before it
+> arrives — CGM readings lag blood, Nightscout lags the CGM, and this device
+> polls on top of that. **Do not dose from it.**
+>
+> There are deliberately **no alarms**. It will not wake anyone up, and it must
+> never be the thing standing between someone and a hypo. Keep your real
+> alarms where they belong: in Dexcom Follow, xDrip, or Nightscout's own
+> alarms. This is a passive, at-a-glance display and nothing more.
+
+---
+
+## What it shows
+
+Five pages. The top button moves forward, the bottom button moves back,
+**both together flip the screen 180°** (for when the USB cable has to come out
+the other side), and after 15 seconds of no input it returns to the main page.
+
+| Page | Contents |
+|---|---|
+| **Main** | Current value, trend arrow, last delta, reading age. Whole-screen colour band. |
+| **Graph** | Configurable 1–24 h, labelled Y axis, all four threshold lines. |
+| **Treatments** | Last three carb/insulin entries with ages, plus 24 h totals. |
+| **Stats** | Time in range / low / high as percentages, min / max / average, feed coverage. |
+| **Diagnostics** | IP, wifi RSSI, uptime, free heap, detected units. |
+| **Wear time** | Pod, sensor and reservoir: time used, **time left**, coloured as each nears its life. |
+| **Recent alerts** | Last 5 pump/CGM alarms with how long ago, tagged `DEV` or `BG`. |
+
+The main page is readable across a room: the background is the colour band, so
+"is it fine?" is answerable from the doorway without reading a digit.
+
+Colour is never the only signal — bands, treatment columns and stale state all
+carry a word or a label as well.
+
+### Trend arrows
+
+Every value Nightscout's `direction.js` can produce is drawn, not just the
+common seven. The rate bands below are Dexcom's; other uploaders set the same
+strings from their own maths.
+
+| Nightscout `direction` | On screen | Rate | Meaning |
+|---|---|---|---|
+| `TripleUp` | three arrows up | — | Only from xDrip/Libre uploaders, never Dexcom Share |
+| `DoubleUp` | two arrows up | > 3 mg/dL/min (> 0.17 mmol) | Rising fast — roughly +2.5 mmol/L in 15 min |
+| `SingleUp` | one arrow up | 2–3 mg/dL/min | Rising |
+| `FortyFiveUp` | arrow up 45° | 1–2 mg/dL/min | Rising slowly |
+| `Flat` | arrow right | < 1 mg/dL/min either way | Steady |
+| `FortyFiveDown` | arrow down 45° | 1–2 mg/dL/min | Falling slowly |
+| `SingleDown` | one arrow down | 2–3 mg/dL/min | Falling |
+| `DoubleDown` | two arrows down | > 3 mg/dL/min | Falling fast |
+| `TripleDown` | three arrows down | — | As TripleUp |
+| `RATE OUT OF RANGE` | double-headed arrow + **FAST** | — | Changing faster than the sensor will put a number on |
+| `NOT COMPUTABLE` | **NO TREND** | — | Not enough history yet — new sensor, or a gap in the feed |
+| `NONE` | **NO TREND** | — | No direction supplied |
+
+A trend the firmware does not recognise falls back to `?` rather than being
+silently dropped.
+
+### Stale data is loud
+
+If a reading is older than your "Stale After" setting the display stops
+pretending. It switches to a dark screen with flashing red bars, the words
+**NO DATA**, and how long it has been. A number that might be an hour old is
+worse than no number at all, so it refuses to show one.
+
+### The web page hides what it is not using
+
+`web_server` embeds `cgm-ui.js` into the page it serves (`js_include`). That
+script watches the **Use Nightscout Thresholds** switch and hides the four
+manual threshold fields whenever they are being driven by Nightscout — the
+group only appears when you actually control it.
+
+ESPHome has no runtime show/hide of its own, so this reaches into the v3 UI's
+shadow DOM, which is **not a documented API**. It fails quietly: if a future
+ESPHome restructures that UI, the rows simply stay visible.
+
+### Pod and sensor age, with nobody logging anything
+
+If your pump data reaches Nightscout through Glooko, the **Wear time** page
+fills itself in. Glooko records `pod_activating`, `reservoir_change` and
+`cgm_sensor_change` from the pump's own event log, so the counters reset at the
+moment the pod actually changed — not when somebody remembered to write it
+down, and not on a recurring calendar reminder that goes wrong the first time
+something is changed early.
+
+There is a catch: **stock nightscout-connect never fetches those events.** It
+requests only basals, boluses and CGM readings, and its converter only emits
+`Meal Bolus` and `Temp Basal`. Two changes to
+`lib/sources/glooko/` fix it — add `/api/v2/pumps/events` to the fetch (with
+its **own** query window; the shared one pins `lastUpdatedAt` to now and
+collapses `limit` to nothing), and map the event types to `Site Change`,
+`Insulin Change` and `Sensor Start`.
+
+Without that patch this page simply shows `--`, and everything else works
+normally.
+
+Lifetimes are Omnipod's 72 h and the G7's 240 h. Glooko does not publish an
+expiry time, so "time left" is computed from the start event plus the nominal
+life — which is what the pump itself counts down.
+
+### Pump and CGM alarms
+
+Glooko records every alarm the pump and sensor raised — `/api/v2/pumps/alarms`.
+`alarm_type` is always null; the machine-readable code lives in **`value`**:
+
+| Device health | Glucose thresholds |
+|---|---|
+| `omnipod_exit_close_loop` | `dexcom_low_glucose_alert` |
+| `omnipod_twelve_missing_egv` | `dexcom_high_glucose_alert` |
+| `omnipod_low_reservoir` | `dexcom_urgent_low_alert` |
+| `omnipod_pod_expiration*`, `omnipod_pump_expired` | `dexcom_urgent_low_soon` |
+| `dexcom_signal_loss`, `dexcom_brief_sensor_issue` | `dexcom_*_fast_alert` |
+
+The bridge patch imports them as **`Note`** treatments — deliberately not
+`Announcement`, which Nightscout escalates into notifications. They appear as
+markers on the Nightscout graph and on the device's alerts page, and nothing
+beeps. The device-health ones matter most: nothing else surfaces them, and
+Dexcom Follow will never tell you the pump dropped out of automated mode.
+
+> These are **past events**. The feed records that an alarm fired; it never
+> says one cleared. The page is worded in the past tense for that reason —
+> "Sensor signal lost, 40 min ago", never "signal is lost". Do not read it as
+> live device state.
+
+---
+
+## Why there is no clock
+
+The device never learns the time. There is no SNTP, no RTC, no timezone.
+
+Nightscout tells you what time *it* thinks it is (`status[0].now`), and every
+reading and treatment carries a UTC timestamp. So the device stores the age of
+a reading at the moment it fetched it, and adds its own `millis()` since. That
+gives an accurate age with no clock, no drift and no DST — and it keeps working
+if NTP is blocked, which on a locked-down IoT VLAN it often is.
+
+The trade-off is that ages are only as good as your Nightscout server's clock.
+That is fine; it is the same clock that stamped the data.
+
+---
+
+## Hardware
+
+- **LilyGO T-Display** — ESP32-D0WDQ6-V3, ST7789V 135×240 IPS.
+  The common 16 MB variant with the CH9102 USB serial chip.
+- A USB-C cable.
+
+That is the entire bill of materials. Nothing to solder, no wiring diagram.
+
+> **GPIO4 is the backlight** and is claimed by the `TTGO_TDISPLAY_135X240`
+> preset. Declaring your own output on it is a **fatal** config error, not a
+> warning. This is why there is no brightness control.
+
+---
+
+## Install
+
+You need [ESPHome](https://esphome.io). The web dashboard, the CLI, or the
+Home Assistant add-on all work — Home Assistant is only ever used to *build*
+the firmware, never to run it.
+
+```bash
+git clone https://github.com/erikpendragon/nightscout-tdisplay
+cd nightscout-tdisplay
+```
+
+There is no `secrets.yaml` to fill in. **This config contains no credentials of
+any kind** — not wifi, not an API key, not an OTA password. Everything the
+device needs to know is entered on the device itself and lives in its flash.
+That is deliberate: it means the compiled binary is safe to hand to anyone,
+and it means a firmware update can never carry someone else's wifi password.
+
+The trade is that anyone on your LAN can reflash the board and open its web
+page. On a $12 display on a home network that is the usual bargain; if you
+would rather not, the config has commented blocks showing where to add an API
+encryption key and an OTA password.
+
+If you use **mg/dL**, open `cgm-display.yaml` and swap the units block at the
+top — the mg/dL values are already there, commented out. The display detects
+mg/dL vs mmol/L from Nightscout on its own; the block only sets sensible
+ranges for the threshold fields.
+
+Then flash over USB once:
+
+```bash
+esphome run cgm-display.yaml
+```
+
+Every update after that is over the air:
+
+```bash
+esphome upload cgm-display.yaml --device <device-ip>
+```
+
+`--device` is required for OTA. Without it ESPHome will go looking for a
+serial port.
+
+---
+
+## First run
+
+1. The board comes up as a wifi access point called **CGM Display Setup**.
+   Join it and enter your wifi credentials. They are saved to the device's
+   flash, not to the firmware.
+2. It reboots onto your network and shows a **SETUP** screen with its own IP.
+3. Browse to `http://<that-ip>` and fill in:
+
+| Field | Notes |
+|---|---|
+| **Nightscout URL** | `http://nightscout.example.com` or `http://192.168.1.50:1337`. No trailing slash needed. |
+| **Nightscout Token** | Only if your site needs auth. A **read-only** token is plenty — this device never writes. Leave blank for an open instance. |
+| **Urgent Low / Low / High / Urgent High** | **Use your own care team's numbers.** |
+| **Graph Hours** | 1–24. |
+| **Stale After** | Minutes before the NO DATA screen. 15 is a reasonable start. |
+
+All of it — wifi included — is stored in the device's flash, **not** in the
+firmware. It survives reboots and it survives firmware updates. You type it
+once. You can also hand someone a pre-flashed board and they can point it at
+their own Nightscout without ever installing ESPHome.
+
+> One gotcha worth knowing if you edit the config: the `initial_value:` fields
+> are only compile-time defaults. They are read at boot and never written to
+> flash. A setting is only stored once you actually change it from the web
+> page — after which the default is ignored forever.
+
+---
+
+## Updating
+
+The device carries a **Firmware** update entity. Every 6 hours it fetches a
+manifest from the URL in `fw_manifest:` at the top of the config, compares the
+version, and offers the update on its own web page (and in Home Assistant, if
+you use it). It never installs unattended — you press the button.
+
+Updating replaces only the application. Your wifi, Nightscout URL, token and
+thresholds all live in a separate flash area and are untouched.
+
+To publish builds for your own fork, host these two files together anywhere
+that serves plain HTTP(S) — GitHub Pages is the easy option:
+
+```json
+{
+  "name": "Nightscout T-Display",
+  "version": "1.1.0",
+  "builds": [
+    {
+      "chipFamily": "ESP32",
+      "ota": {
+        "path": "cgm-display.ota.bin",
+        "md5": "<md5sum of that file>",
+        "summary": "What changed",
+        "release_url": "https://github.com/you/your-fork/releases/tag/v1.1.0"
+      }
+    }
+  ]
+}
+```
+
+`path` is resolved relative to the manifest URL. The `.ota.bin` is produced by
+`esphome compile` under `.esphome/build/cgm-display/`.
+
+> ### Set the thresholds properly
+> They are placeholders out of the box. Every percentage the device
+> reports — time in range, low, high — is measured against them, and so are
+> all the colour bands and graph lines. Wrong thresholds do not produce a
+> slightly-off display, they produce confidently wrong statistics.
+
+---
+
+## What it asks Nightscout for
+
+Read-only, four endpoints, polled gently:
+
+| What | Endpoint | Every |
+|---|---|---|
+| Current value | `/pebble` | 60 s |
+| Graph history | `/pebble?count=<hours×12>` | 5 min |
+| Stats | `/pebble?count=288` | 5 min |
+| Treatments | `/api/v1/treatments.json?count=12` | 5 min |
+
+`/pebble` is used rather than `/api/v1/entries.json` because it is around 3.5×
+smaller, already converted to your display units, and a JSON object rather than
+a top-level array — all three matter on a device with a few hundred KB of heap.
+
+Your Nightscout needs to allow reads. Either set `AUTH_DEFAULT_ROLES=readable`,
+or issue a read-only token and paste it into the token field.
+
+---
+
+## Notes for anyone hacking on this
+
+Things that cost real time to work out:
+
+- **ESPHome truncates HTTP responses at ~1000 bytes by default.** The symptom
+  is a JSON parse failure against a perfectly good endpoint.
+  `max_response_buffer_size` goes on the `http_request.get:` **action**, not on
+  the component. Always log `body.length()` in `on_response`.
+- **ArduinoJson: read epoch milliseconds with `.as<int64_t>()`.**
+  `.as<double>()` silently returns **0** for a 13-digit integer, which turns
+  into an age of about 56 years. Every treatment on the page read
+  `496654h 28m` until this was found.
+- **`json::parse_json` only accepts a JSON object.** `entries.json` and
+  `treatments.json` are top-level arrays and need raw `deserializeJson()`.
+- **Thick diagonal lines need triangles, not stacked offset lines.** Drawing
+  N parallel lines at ±1 px works at 0° and 90°, but at 45° the integer
+  offsets collide and the shaft comes out visibly hatched. The shaft here is
+  two `filled_triangle` calls, which is gapless at any angle.
+- **`sram1_as_iram: true`** buys about 40 KB of heap and is the difference
+  between this firmware booting and rolling back. If OTA reports success but
+  the old firmware is clearly still running, that is a silent rollback — check
+  free heap.
+- **Ask for the event types you want, not "everything except X".** Importing
+  alarms as notes crowded a week-old sensor change out of a `$ne: Meal Bolus`
+  query. `find[eventType][$in][]=...` is precise and smaller.
+- **The treatments API silently defaults to a recent window.** A sensor change
+  from eight days ago is invisible unless you pass an explicit
+  `find[created_at][$gte]` floor. A fixed old date works and needs no clock.
+- **Roboto has no arrow glyphs, and neither do the Google Fonts subsets.** The
+  trend arrows come from the Material Design Icons webfont at `bpp: 4`. Read
+  the codepoints out of the font's own `cmap` rather than trusting a lookup
+  table — `F005B` is *arrow-top-left*, not top-right.
+- **Never render an age you cannot justify.** The treatment page now clamps to
+  a plausible window and prints `--` outside it. A wrong number that looks
+  like a real number is the worst possible output for this kind of device.
+
+---
+
+## Licence
+
+MIT. See [LICENSE](LICENSE).
+
+Not affiliated with Nightscout, Dexcom, Insulet or Glooko. Nightscout is a
+community project; this is a small client for it.
