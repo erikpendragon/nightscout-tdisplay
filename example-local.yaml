@@ -1,0 +1,46 @@
+# Example local configuration - copy this to your ESPHome directory as
+# cgm-display.yaml and edit to taste.
+#
+# The real configuration is pulled from GitHub by the packages block below,
+# so this file only holds what is specific to YOUR installation. Nothing to
+# keep in sync by hand, and `esphome clean` (or waiting for `refresh`) picks
+# up a newer upstream config.
+#
+# Two support files must also sit in this directory. ESPHome resolves
+# `includes:` and `js_include:` relative to the CONFIG directory, not the
+# downloaded package, so the copies inside the package are not found:
+#
+#   version_compare.h   copy it from this repo
+#   web-ui.js           generate it with ./build-webui.sh
+
+packages:
+  nightscout_tdisplay:
+    url: https://github.com/erikpendragon/nightscout-tdisplay
+    ref: main
+    files: [cgm-display.yaml]
+    refresh: 1d
+
+# ---------------------------------------------------------------------------
+# Everything below is OPTIONAL. Delete it and the device still works - it just
+# has no OTA password and an unencrypted API, which is the published default.
+#
+# A note on how ESPHome merges packages, because the two blocks differ:
+#   `ota:` is a LIST, and lists are APPENDED. Without `!extend` you would get
+#          a second OTA platform rather than a password on the existing one.
+#   `api:` is a MAPPING, and mappings are MERGED, so `encryption:` slots in
+#          alongside the package's own settings with no `!extend`.
+# ---------------------------------------------------------------------------
+
+# Require a password to flash this board over the air.
+#   esphome secrets: my_ota_password: "something long"
+# ota:
+#   - id: !extend ota_esphome
+#     password: !secret my_ota_password
+
+# Encrypt the Home Assistant connection. Generate a key with
+# `openssl rand -base64 32`, put it in your secrets, and give the same key to
+# Home Assistant when it asks. If HA already knows this device, use the key it
+# already has or it will not reconnect.
+# api:
+#   encryption:
+#     key: !secret my_api_key

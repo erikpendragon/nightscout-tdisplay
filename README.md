@@ -233,14 +233,29 @@ Two support files must sit next to that stub, because ESPHome resolves
 the downloaded package: copy `version_compare.h` from this repo, and generate
 `web-ui.js` with `./build-webui.sh`.
 
-The published config carries no credentials. To add an OTA password without
-forking the file:
+The published config carries no credentials, so both of the following are
+optional — without them the device still works, it just has no OTA password
+and an unencrypted API.
 
 ```yaml
+# ota: is a LIST - lists are APPENDED, so !extend modifies the existing
+# platform instead of adding a second one
 ota:
   - id: !extend ota_esphome
     password: !secret my_ota_password
+
+# api: is a MAPPING - mappings are MERGED, so no !extend, and the package's
+# own api settings survive
+api:
+  encryption:
+    key: !secret my_api_key
 ```
+
+That list-versus-mapping distinction is the only fiddly part, and getting it
+wrong fails in different ways: a duplicated OTA platform, or a clobbered api
+block.
+
+[`example-local.yaml`](example-local.yaml) is the whole thing ready to copy.
 
 ### 3. Build it yourself with ESPHome
 
