@@ -92,7 +92,7 @@ esphome:
   friendly_name: ${friendly_name}
   project:
     name: "erikpendragon.cgm-display"
-    version: "1.0.2"
+    version: "1.0.3"
   on_boot:
     priority: -100
     then:
@@ -2034,12 +2034,17 @@ display:
                 "UNITS  %s", id(g_mgdl) ? "mg/dL" : "mmol/L");
       it.printf(236, 2, id(font_tiny), G(id(c_dim)), TextAlign::TOP_RIGHT,
                 "THRESHOLDS %s", id(g_th_from_ns) ? "AUTO" : "MANUAL");
+      // Which firmware this actually is - bottom right, level with UNITS on
+      // the left. The web page knows, but the device should be able to answer
+      // it on its own.
+      it.printf(236, 96, id(font_small), G(id(c_white)), TextAlign::TOP_RIGHT,
+                "FW %s", ESPHOME_PROJECT_VERSION);
       // The right half of this page is otherwise empty, so a waiting update
       // gets to say so plainly rather than only on the web page.
       if (id(fw_update).state == update::UPDATE_STATE_AVAILABLE) {
-        it.printf(236, 40, id(font_mid), G(id(c_urgent_low)), TextAlign::TOP_RIGHT,
+        it.printf(236, 39, id(font_small), G(id(c_urgent_low)), TextAlign::TOP_RIGHT,
                   "UPDATE");
-        it.printf(236, 66, id(font_mid), G(id(c_urgent_low)), TextAlign::TOP_RIGHT,
+        it.printf(236, 58, id(font_small), G(id(c_urgent_low)), TextAlign::TOP_RIGHT,
                   "AVAILABLE");
       }
       status();
