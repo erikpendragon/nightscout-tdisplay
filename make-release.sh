@@ -123,6 +123,32 @@ echo "  pinned copy in $VDIR/"
 } > docs/VERSIONS.md
 echo "  wrote docs/VERSIONS.md"
 
+# Refuse to publish a binary containing anything from .release-denylist - one
+# secret per line, gitignored. Releases must be built from a config with NO
+# local overrides (see example-local.yaml): building from the config you flash
+# your own device with bakes its OTA password into a public file. That is
+# exactly what happened to v1.0.1 through v1.0.8.
+if [ -f .release-denylist ]; then
+  leaked=0
+  while IFS= read -r secret; do
+    [ -z "$secret" ] && continue
+    case "$secret" in \#*) continue ;; esac
+    for img in "docs/$NAME.ota.bin" "docs/$NAME.factory.bin"; do
+      # grep -c, not grep -q: with `set -o pipefail`, grep -q exits on the
+      # first match and SIGPIPEs strings, so the pipeline reports failure and
+      # a HIT reads as a miss. -c consumes the whole stream.
+      hits=$(strings "$img" 2>/dev/null | grep -cF -- "$secret" || true)
+      if [ "${hits:-0}" -gt 0 ]; then
+        echo "  REFUSING TO PUBLISH: $img contains a denylisted secret"
+        leaked=1
+      fi
+    done
+  done < .release-denylist
+  [ "$leaked" = 0 ] && echo "  images checked against .release-denylist - clean" || exit 1
+else
+  echo "  note: no .release-denylist - binaries not scanned for secrets"
+fi
+
 # Every file a manifest points at must exist AND be committable. A blanket
 # *.bin rule in .gitignore silently drops these, and the failure only shows up
 # as a 404 on the device hours later - so check it here instead.

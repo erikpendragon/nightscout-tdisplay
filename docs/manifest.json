@@ -11,8 +11,8 @@
       ],
       "ota": {
         "path": "cgm-display.ota.bin",
-        "md5": "7739a30e23d296003e597b0216f0fe19",
-        "summary": "OTA platform has an id, so a local config can add a password with !extend"
+        "md5": "14c6c584261681f569c10e1aaa905b92",
+        "summary": "Release binaries rebuilt without local credentials"
       }
     }
   ]
