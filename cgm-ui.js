@@ -25,9 +25,7 @@
   var RES_FIELD = 'Reservoir life (hours)';
   var LOCKED = ['Urgent High', 'High', 'Low', 'Urgent Low'];
   var NEEDED_ROW = 'Token needed?';
-  // The update entity's own row says "UPDATE AVAILABLE" and nothing else -
-  // Update Status already says that, with the version. Its buttons do the work.
-  var HIDDEN_ROWS = ['Firmware'];
+  var HIDDEN_ROWS = [];
   var STYLE_ID = 'cgm-ui-style';
 
   function table() {
