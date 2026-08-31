@@ -92,7 +92,7 @@ esphome:
   friendly_name: ${friendly_name}
   project:
     name: "erikpendragon.cgm-display"
-    version: "1.0.1"
+    version: "1.0.2"
   on_boot:
     priority: -100
     then:
@@ -1094,16 +1094,25 @@ script:
                   if (th.isNull()) return;
                   // Nightscout always stores these in mg/dL, whatever
                   // DISPLAY_UNITS says. Convert only if we render mmol/L.
-                  float f = id(g_mgdl) ? 1.0f : 18.0182f;
-                  struct M { const char *key; esphome::number::Number *n; };
+                  bool mg = id(g_mgdl);
+                  float f = mg ? 1.0f : 18.0182f;
+                  // The spinner ranges follow the units Nightscout is actually
+                  // reporting, so there is no compile-time mg/dL vs mmol/L
+                  // choice to get wrong. Nightscout is the source of truth for
+                  // both the values and the scale they are on.
+                  struct M { const char *key; esphome::number::Number *n;
+                             float lo_mg, hi_mg, lo_mm, hi_mm; };
                   M m[4] = {
-                    { "bgLow",          id(n_urgent_low) },
-                    { "bgTargetBottom", id(n_low) },
-                    { "bgTargetTop",    id(n_high) },
-                    { "bgHigh",         id(n_urgent_high) },
+                    { "bgLow",          id(n_urgent_low),  40, 110, 2.0f,  6.0f },
+                    { "bgTargetBottom", id(n_low),         45, 125, 2.5f,  7.0f },
+                    { "bgTargetTop",    id(n_high),       110, 250, 6.0f, 16.0f },
+                    { "bgHigh",         id(n_urgent_high),150, 400, 8.0f, 25.0f },
                   };
                   bool any = false;
                   for (int i = 0; i < 4; i++) {
+                    m[i].n->traits.set_min_value(mg ? m[i].lo_mg : m[i].lo_mm);
+                    m[i].n->traits.set_max_value(mg ? m[i].hi_mg : m[i].hi_mm);
+                    m[i].n->traits.set_step(mg ? 1.0f : 0.1f);
                     if (!th[m[i].key].is<float>()) continue;
                     float v = th[m[i].key].as<float>() / f;
                     if (!(v > 0)) continue;
@@ -1235,6 +1244,16 @@ debug:
 # Use it before handing the board to somebody else. A configured device holds
 # your wifi password in flash, and flash can be read back over USB.
 button:
+  # The update entity polls every 6 hours. This asks now - useful right after
+  # a release, and the only way to re-check without power-cycling.
+  - platform: template
+    name: "Check for Updates"
+    web_server:
+      sorting_group_id: grp_upd
+      sorting_weight: 3
+    on_press:
+      - lambda: 'id(fw_update).check();'
+
   - platform: factory_reset
     name: "Factory Reset"
     web_server:
@@ -1252,7 +1271,10 @@ switch:
       sorting_weight: 3
     id: sw_ns_th
     optimistic: true
-    restore_mode: RESTORE_DEFAULT_ON
+    # OFF by default, deliberately: turning it on overwrites the four values
+    # you typed, and that should be a decision rather than a surprise on the
+    # first boot.
+    restore_mode: RESTORE_DEFAULT_OFF
   # The two buttons pressed together do the same thing - this is here so the
   # setting is discoverable on the web page rather than folded knowledge.
   # On Omnipod the reservoir sits inside the pod: both are replaced in the
@@ -2012,4 +2034,12 @@ display:
                 "UNITS  %s", id(g_mgdl) ? "mg/dL" : "mmol/L");
       it.printf(236, 2, id(font_tiny), G(id(c_dim)), TextAlign::TOP_RIGHT,
                 "THRESHOLDS %s", id(g_th_from_ns) ? "AUTO" : "MANUAL");
+      // The right half of this page is otherwise empty, so a waiting update
+      // gets to say so plainly rather than only on the web page.
+      if (id(fw_update).state == update::UPDATE_STATE_AVAILABLE) {
+        it.printf(236, 40, id(font_mid), G(id(c_urgent_low)), TextAlign::TOP_RIGHT,
+                  "UPDATE");
+        it.printf(236, 66, id(font_mid), G(id(c_urgent_low)), TextAlign::TOP_RIGHT,
+                  "AVAILABLE");
+      }
       status();
