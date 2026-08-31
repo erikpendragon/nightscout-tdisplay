@@ -32,9 +32,9 @@ after a configurable idle time it returns to the main page.
 |---|---|
 | **Main** | Current value, trend arrow, last delta, reading age. Whole-screen colour band. |
 | **Graph** | Configurable 1–24 h, labelled Y axis, all four threshold lines. |
-| **Treatments** | Last three carb/insulin entries with ages, plus 24 h totals. |
+| **Treatments** | Last three carb/insulin entries with ages, insulin and carbs still on board, and 24 h totals. |
 | **Stats** | Time in range / low / high as percentages, min / max / average, feed coverage. |
-| **Diagnostics** | IP, wifi RSSI, uptime, free heap, detected units. |
+| **Diagnostics** | IP, wifi RSSI, uptime, free heap, detected units, installed firmware — and **UPDATE AVAILABLE** in red when there is one. |
 | **Wear time** | Pod, sensor and reservoir: time used, **time left**, coloured as each nears its life. |
 | **Recent alerts** | Last 5 pump/CGM alarms with how long ago, tagged `DEV` or `BG`. |
 
@@ -88,7 +88,7 @@ to fix it.
 ### The web page hides what it is not using
 
 The device serves its own web UI — ESPHome's bundle with `cgm-ui.js` appended,
-assembled by `build-webui.sh`. That script watches two switches: it locks the
+assembled by `build-webui.sh`. `cgm-ui.js` watches two switches: it locks the
 four manual threshold fields whenever **Use Nightscout Thresholds** is driving
 them, and hides **Reservoir life** unless **Separate Reservoir** is on. Fields
 you are not using stay out of the way.
@@ -369,10 +369,20 @@ their own Nightscout without ever installing ESPHome.
 
 ## Updating
 
-The device carries a **Firmware** update entity. Every 6 hours it fetches a
-manifest from the URL in `fw_manifest:` at the top of the config, compares the
-version, and offers the update on its own web page (and in Home Assistant, if
-you use it). It never installs unattended — you press the button.
+Every 6 hours the device fetches a manifest from the URL in `fw_manifest:` at
+the top of the config and compares it with what is installed. Its web page
+shows four things under **Updates**:
+
+| | |
+|---|---|
+| **Installed Version** | what is running right now |
+| **Update Status** | `Up to date`, `Update available: 1.1.0`, or why a check failed |
+| **Check for Updates** | asks now, rather than waiting up to six hours |
+| **Install Update** | downloads and reboots — nothing happens until you press it |
+
+Checking and installing are deliberately separate, and a press with nothing
+waiting does nothing. The diagnostics page also shows **UPDATE AVAILABLE** in
+red, so you do not have to open the web page to find out.
 
 Updating replaces only the application. Your wifi, Nightscout URL, token and
 thresholds live in a separate flash area and are untouched — which is also why
@@ -395,75 +405,23 @@ manifest it is watching never changes.
 
 [`docs/VERSIONS.md`](docs/VERSIONS.md) lists what is available.
 
-### Publishing your own builds
-
-`make-release.sh` does all of this — it copies both images into `docs/`,
-computes the MD5 and writes the manifest:
-
-```bash
-esphome compile cgm-display-release.yaml           # a config with NO local overrides
-esphome config  cgm-display-release.yaml > /tmp/resolved.yaml
-./make-release.sh "what changed" firmware.ota.bin firmware.factory.bin /tmp/resolved.yaml
-```
-
-The resolved config is required, and the script refuses to publish if it
-declares a password or API encryption. That check is on the *input* on
-purpose: scanning the compiled image cannot prove a build was
-credential-free, because an API encryption key is stored decoded and never
-appears in the binary as a string. Build releases from a config with no local
-overrides — building from the one you flash your own device with bakes its
-OTA password into a public file.
-
-Commit `docs/` and push — GitHub Pages serves it, and devices pointed at your
-fork pick it up on their next check.
-
-By hand, host these files together anywhere that serves plain HTTP(S):
-
-```json
-{
-  "name": "CGM Display",
-  "version": "1.1.0",
-  "builds": [
-    {
-      "chipFamily": "ESP32",
-      "parts": [
-        { "path": "cgm-display.factory.bin", "offset": 0 }
-      ],
-      "ota": {
-        "path": "cgm-display.ota.bin",
-        "md5": "<md5sum of that file>",
-        "summary": "What changed"
-      }
-    }
-  ]
-}
-```
-
-`path` is resolved relative to the manifest URL. Both images come out of
-`esphome compile` under `.esphome/build/cgm-display/build/` — `firmware.ota.bin`
-is the app alone, for devices already running this firmware, and
-`firmware.factory.bin` is the complete image for a blank board. The `parts`
-block is what browser-based ESP flashers read; `ota` is what the device's own
-update check reads.
-
-> ### Set the thresholds properly
-> They are placeholders out of the box. Every percentage the device
-> reports — time in range, low, high — is measured against them, and so are
-> all the colour bands and graph lines. Wrong thresholds do not produce a
-> slightly-off display, they produce confidently wrong statistics.
-
----
-
 ## What it asks Nightscout for
 
-Read-only, four endpoints, polled gently:
+Read-only. Seven requests on one scheduler, ordered by how much the freshness
+matters — and at most one runs per five-second tick, so two never overlap:
 
 | What | Endpoint | Every |
 |---|---|---|
-| Current value | `/pebble` | 60 s |
-| Graph history | `/pebble?count=<hours×12>` | 5 min |
-| Stats | `/pebble?count=288` | 5 min |
-| Treatments | `/api/v1/treatments.json?count=12` | 5 min |
+| Current value, IOB and COB | `/pebble` | 30 s |
+| Recent treatments | `/api/v1/treatments.json?count=12` | 60 s |
+| Graph history | `/pebble?count=<hours×12>` | 2 min |
+| Pod / sensor / reservoir age | `/api/v1/treatments.json` filtered to `Site Change`, `Sensor Start`, `Insulin Change` | 5 min |
+| Pump and CGM alarms | `/api/v1/treatments.json` filtered to notes | 5 min |
+| Stats | `/pebble?count=288` | 15 min |
+| Thresholds | `/api/v1/status.json` | 30 min |
+
+A 24-hour time-in-range does not move in five minutes; a bolus you just
+entered does.
 
 `/pebble` is used rather than `/api/v1/entries.json` because it is around 3.5×
 smaller, already converted to your display units, and a JSON object rather than
