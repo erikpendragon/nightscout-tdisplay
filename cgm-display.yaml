@@ -92,13 +92,17 @@ esphome:
   friendly_name: ${friendly_name}
   project:
     name: "erikpendragon.cgm-display"
-    version: "1.0.5"
+    version: "1.0.6"
   on_boot:
     priority: -100
     then:
       - lambda: |-
           id(disp).set_rotation(id(g_flip) ? DISPLAY_ROTATION_270_DEGREES
                                            : DISPLAY_ROTATION_90_DEGREES);
+          // A template text_sensor with update_interval: never never runs its
+          // lambda, so the version has to be published once, here.
+          id(ts_fw_version).publish_state(ESPHOME_PROJECT_VERSION);
+          id(ts_upd_status).publish_state("Not checked yet");
 
 esp32:
   board: esp32dev
@@ -1352,7 +1356,6 @@ text_sensor:
     web_server:
       sorting_group_id: grp_upd
       sorting_weight: 1
-    lambda: 'return {ESPHOME_PROJECT_VERSION};'
     update_interval: never
 
   # A check takes a second or two and otherwise gives no sign it happened.
