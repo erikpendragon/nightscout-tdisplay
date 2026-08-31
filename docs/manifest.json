@@ -1,0 +1,16 @@
+{
+  "name": "CGM Display",
+  "version": "1.0.0",
+  "home_assistant_domain": "esphome",
+  "new_install_prompt_erase": false,
+  "builds": [
+    {
+      "chipFamily": "ESP32",
+      "ota": {
+        "path": "cgm-display.ota.bin",
+        "md5": "2fa3634c1c1b9d4e1cd511b6cd5579b1",
+        "summary": "Sensor life 264h; reservoir folded into pod; offline web UI"
+      }
+    }
+  ]
+}
