@@ -23,9 +23,10 @@ the background. Wifi and a Nightscout URL, and it works.
 
 ## What it shows
 
-Five pages. The top button moves forward, the bottom button moves back,
-**both together flip the screen 180°** (for when the USB cable has to come out
-the other side), and after 15 seconds of no input it returns to the main page.
+Seven pages, plus one that only exists when the data has gone stale. The top
+button moves forward, the bottom button moves back, **both together flip the
+screen 180°** (for when the USB cable has to come out the other side), and
+after a configurable idle time it returns to the main page.
 
 | Page | Contents |
 |---|---|
@@ -86,10 +87,16 @@ to fix it.
 
 ### The web page hides what it is not using
 
-`web_server` embeds `cgm-ui.js` into the page it serves (`js_include`). That
-script watches the **Use Nightscout Thresholds** switch and hides the four
-manual threshold fields whenever they are being driven by Nightscout — the
-group only appears when you actually control it.
+The device serves its own web UI — ESPHome's bundle with `cgm-ui.js` appended,
+assembled by `build-webui.sh`. That script watches two switches: it locks the
+four manual threshold fields whenever **Use Nightscout Thresholds** is driving
+them, and hides **Reservoir life** unless **Separate Reservoir** is on. Fields
+you are not using stay out of the way.
+
+Serving the bundle from the device rather than a CDN is deliberate: the config
+page is what you reach for when something is wrong, and it has to work on a
+network with no internet. (ESPHome's `local: true` looks like the way to do
+that, but it silently disables `js_include` — hence the assembled file.)
 
 ESPHome has no runtime show/hide of its own, so this reaches into the v3 UI's
 shadow DOM, which is **not a documented API**. It fails quietly: if a future
@@ -271,15 +278,39 @@ where to add an API encryption key and an OTA password.
    Join it and enter your wifi credentials. They are saved to the device's
    flash, not to the firmware.
 2. It reboots onto your network and shows a **SETUP** screen with its own IP.
-3. Browse to `http://<that-ip>` and fill in:
+3. Browse to `http://<that-ip>` — or `http://cgm-display.local` if your
+   network resolves mDNS and you kept the default name — and fill in:
+
+The settings are grouped the way you meet them.
+
+**Nightscout**
 
 | Field | Notes |
 |---|---|
 | **Nightscout URL** | `http://nightscout.example.com` or `http://192.168.1.50:1337`. No trailing slash needed. |
-| **Nightscout Token** | Only if your site needs auth. A **read-only** token is plenty — this device never writes. Leave blank for an open instance. |
-| **Urgent Low / Low / High / Urgent High** | **Use your own care team's numbers.** |
+| **Token** | Only if your site needs auth. A **read-only** token is plenty — this device never writes. Leave blank for an open instance. |
+| **Use Nightscout Thresholds** | On by default. Pulls your four thresholds from the site itself, so there is one set of numbers rather than two that can disagree. Turn it off to type your own. |
+
+**Blood glucose thresholds** — only editable with the switch above off.
+**Use your own care team's numbers.** Every percentage on the device is
+measured against them.
+
+**Display**
+
+| Field | Notes |
+|---|---|
 | **Graph Hours** | 1–24. |
-| **Stale After** | Minutes before the NO DATA screen. 15 is a reasonable start. |
+| **Stale After** | Minutes before the display goes greyscale and says STALE. 15 is a reasonable start. |
+| **Idle Return** | Seconds of no button input before it returns to the main page. Default 15. |
+| **Flip Screen** | Rotates 180°, for when the USB cable has to come out the other side. |
+
+**Hardware Replacement**
+
+| Field | Notes |
+|---|---|
+| **Sensor / Pod life (hours)** | Defaults are a G7 at 264 h and an Omnipod at 72 h. Set them to what your own kit runs. |
+| **Separate Reservoir** | Off by default — on an Omnipod the reservoir is inside the pod. Turn on for a tubed pump, and **Reservoir life** appears. |
+| **Warning / Urgent at % left** | When the wear-time bars turn amber and red. |
 
 All of it — wifi included — is stored in the device's flash, **not** in the
 firmware. It survives reboots and it survives firmware updates. You type it
@@ -365,44 +396,6 @@ a top-level array — all three matter on a device with a few hundred KB of heap
 
 Your Nightscout needs to allow reads. Either set `AUTH_DEFAULT_ROLES=readable`,
 or issue a read-only token and paste it into the token field.
-
----
-
-## Notes for anyone hacking on this
-
-Things that cost real time to work out:
-
-- **ESPHome truncates HTTP responses at ~1000 bytes by default.** The symptom
-  is a JSON parse failure against a perfectly good endpoint.
-  `max_response_buffer_size` goes on the `http_request.get:` **action**, not on
-  the component. Always log `body.length()` in `on_response`.
-- **ArduinoJson: read epoch milliseconds with `.as<int64_t>()`.**
-  `.as<double>()` silently returns **0** for a 13-digit integer, which turns
-  into an age of about 56 years. Every treatment on the page read
-  `496654h 28m` until this was found.
-- **`json::parse_json` only accepts a JSON object.** `entries.json` and
-  `treatments.json` are top-level arrays and need raw `deserializeJson()`.
-- **Thick diagonal lines need triangles, not stacked offset lines.** Drawing
-  N parallel lines at ±1 px works at 0° and 90°, but at 45° the integer
-  offsets collide and the shaft comes out visibly hatched. The shaft here is
-  two `filled_triangle` calls, which is gapless at any angle.
-- **`sram1_as_iram: true`** buys about 40 KB of heap and is the difference
-  between this firmware booting and rolling back. If OTA reports success but
-  the old firmware is clearly still running, that is a silent rollback — check
-  free heap.
-- **Ask for the event types you want, not "everything except X".** Importing
-  alarms as notes crowded a week-old sensor change out of a `$ne: Meal Bolus`
-  query. `find[eventType][$in][]=...` is precise and smaller.
-- **The treatments API silently defaults to a recent window.** A sensor change
-  from eight days ago is invisible unless you pass an explicit
-  `find[created_at][$gte]` floor. A fixed old date works and needs no clock.
-- **Roboto has no arrow glyphs, and neither do the Google Fonts subsets.** The
-  trend arrows come from the Material Design Icons webfont at `bpp: 4`. Read
-  the codepoints out of the font's own `cmap` rather than trusting a lookup
-  table — `F005B` is *arrow-top-left*, not top-right.
-- **Never render an age you cannot justify.** The treatment page now clamps to
-  a plausible window and prints `--` outside it. A wrong number that looks
-  like a real number is the worst possible output for this kind of device.
 
 ---
 
