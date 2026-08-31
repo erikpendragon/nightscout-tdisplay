@@ -92,7 +92,7 @@ esphome:
   friendly_name: ${friendly_name}
   project:
     name: "erikpendragon.cgm-display"
-    version: "1.0.0"
+    version: "1.0.1"
   on_boot:
     priority: -100
     then:
@@ -1227,6 +1227,19 @@ sensor:
 
 debug:
   update_interval: 60s
+
+# Wipes everything the device has learned: wifi credentials, the Nightscout
+# URL and token, and all sixteen stored settings. The board comes back up as
+# the "CGM Display Setup" access point, exactly as it left the factory.
+#
+# Use it before handing the board to somebody else. A configured device holds
+# your wifi password in flash, and flash can be read back over USB.
+button:
+  - platform: factory_reset
+    name: "Factory Reset"
+    web_server:
+      sorting_group_id: grp_diag
+      sorting_weight: 9
 
 switch:
   # With this on, the four thresholds below are pulled from Nightscout's own

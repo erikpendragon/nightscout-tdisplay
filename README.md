@@ -69,10 +69,20 @@ silently dropped.
 
 ### Stale data is loud
 
-If a reading is older than your "Stale After" setting the display stops
-pretending. It switches to a dark screen with flashing red bars, the words
-**NO DATA**, and how long it has been. A number that might be an hour old is
-worse than no number at all, so it refuses to show one.
+If a reading is older than your "Stale After" setting, the whole display drops
+to greyscale — black background, white labels, grey numbers. Colour on this
+screen means "this is current", so when nothing is current, nothing is
+coloured. The status strip along the bottom reads **STALE FOR 25 MIN**.
+
+An extra **STALE DATA** page appears at the front of the rotation saying how
+long it has been. The reading itself is still there, one button press away and
+struck through — the same convention Nightscout uses for looking at the past.
+A number that might be an hour old is worse than no number at all, so it is
+never presented as if it were live.
+
+**NO DATA** is a different screen, shown only when the device has never
+received a reading at all — usually a wrong URL, and it tells you where to go
+to fix it.
 
 ### The web page hides what it is not using
 
@@ -96,18 +106,27 @@ something is changed early.
 
 There is a catch: **stock nightscout-connect never fetches those events.** It
 requests only basals, boluses and CGM readings, and its converter only emits
-`Meal Bolus` and `Temp Basal`. Two changes to
-`lib/sources/glooko/` fix it — add `/api/v2/pumps/events` to the fetch (with
-its **own** query window; the shared one pins `lastUpdatedAt` to now and
-collapses `limit` to nothing), and map the event types to `Site Change`,
-`Insulin Change` and `Sensor Start`.
+`Meal Bolus` and `Temp Basal`. Two changes to `lib/sources/glooko/` fix it —
+add `/api/v2/pumps/events` to the fetch (with its **own** query window; the
+shared one pins `lastUpdatedAt` to now and collapses `limit` to nothing), and
+map the event types to `Site Change`, `Insulin Change` and `Sensor Start`.
+
+A patched fork is at
+[erikpendragon/nightscout-connect](https://github.com/erikpendragon/nightscout-connect)
+if you would rather run it than apply the changes yourself.
 
 Without that patch this page simply shows `--`, and everything else works
 normally.
 
-Lifetimes are Omnipod's 72 h and the G7's 240 h. Glooko does not publish an
-expiry time, so "time left" is computed from the start event plus the nominal
-life — which is what the pump itself counts down.
+Lifetimes are set on the device's web page — 72 h for an Omnipod and 264 h for
+a Dexcom G7 by default. Glooko does not publish an expiry time, so "time left"
+is the start event plus the nominal life, which is what the pump itself counts
+down. Set them to whatever your own kit actually runs.
+
+On an Omnipod the reservoir lives inside the pod, so both are replaced in the
+same action and the reservoir row is folded into the pod one. If you use a
+tubed pump, where the cartridge and the infusion site change independently,
+turn on **Separate Reservoir** and it becomes its own row.
 
 ### Pump and CGM alarms
 
@@ -166,45 +185,83 @@ That is the entire bill of materials. Nothing to solder, no wiring diagram.
 
 ## Install
 
-You need [ESPHome](https://esphome.io). The web dashboard, the CLI, or the
-Home Assistant add-on all work — Home Assistant is only ever used to *build*
-the firmware, never to run it.
+Two ways in. The first needs nothing but a USB cable.
+
+### 1. Flash the pre-built firmware
+
+Every release publishes a complete image — bootloader, partition table and
+app — so a blank board needs no build tools at all.
+
+Download
+[`cgm-display.factory.bin`](https://erikpendragon.github.io/nightscout-tdisplay/cgm-display.factory.bin)
+and write it at offset 0:
 
 ```bash
+esptool.py --chip esp32 --port /dev/ttyUSB0 write_flash 0x0 cgm-display.factory.bin
+```
+
+`pip install esptool` if you don't have it. On macOS the port is usually
+`/dev/cu.usbserial-*`; on Windows a `COM*` number.
+
+After this the device updates itself — it checks the manifest every six hours
+and offers new versions on its own web page. You never need to touch a cable
+again.
+
+### 2. Build it yourself with ESPHome
+
+Worth doing if you want to change anything. You need
+[ESPHome](https://esphome.io) — **the CLI on its own is enough**:
+
+```bash
+pip install esphome
 git clone https://github.com/erikpendragon/nightscout-tdisplay
 cd nightscout-tdisplay
+./build-webui.sh                 # bundles the web UI so it works offline
+esphome run cgm-display.yaml     # USB the first time
 ```
 
-There is no `secrets.yaml` to fill in. **This config contains no credentials of
-any kind** — not wifi, not an API key, not an OTA password. Everything the
-device needs to know is entered on the device itself and lives in its flash.
-That is deliberate: it means the compiled binary is safe to hand to anyone,
-and it means a firmware update can never carry someone else's wifi password.
+Home Assistant is *not* required. If you happen to run the ESPHome add-on you
+can use it, but it only ever *builds* the firmware — the device never talks to
+Home Assistant, and nothing here depends on it.
 
-The trade is that anyone on your LAN can reflash the board and open its web
-page. On a $12 display on a home network that is the usual bargain; if you
-would rather not, the config has commented blocks showing where to add an API
-encryption key and an OTA password.
-
-If you use **mg/dL**, open `cgm-display.yaml` and swap the units block at the
-top — the mg/dL values are already there, commented out. The display detects
-mg/dL vs mmol/L from Nightscout on its own; the block only sets sensible
-ranges for the threshold fields.
-
-Then flash over USB once:
-
-```bash
-esphome run cgm-display.yaml
-```
-
-Every update after that is over the air:
+Updates afterwards are over the air:
 
 ```bash
 esphome upload cgm-display.yaml --device <device-ip>
 ```
 
-`--device` is required for OTA. Without it ESPHome will go looking for a
-serial port.
+`--device` is required for OTA; without it ESPHome goes looking for a serial
+port.
+
+If you use **mg/dL**, swap the units block at the top of `cgm-display.yaml` —
+the mg/dL values are there, commented out. The display detects mg/dL vs mmol/L
+from Nightscout by itself; the block only sets sensible ranges for the
+threshold fields.
+
+### About credentials
+
+There is no `secrets.yaml` to fill in. **The config and the compiled firmware
+contain no credentials of any kind** — not wifi, not an API key, not an OTA
+password. Everything the device needs is entered on the device itself and
+lives in its flash, never in the image. So the published binary is safe for
+anyone to download, and an update can never carry somebody else's wifi
+password into your device.
+
+> **A configured board is a different matter.** Once you have set it up, its
+> flash holds your wifi credentials, your Nightscout URL and your token — and
+> flash can be read back over USB by anyone holding the board. Treat a
+> configured device like a phone, not like a cable.
+>
+> Before giving one away, press **Factory Reset** on its web page. That clears
+> the wifi credentials, the URL, the token and every stored setting, and the
+> board comes back up as the `CGM Display Setup` access point. If you would
+> rather not trust a button with it, `esptool.py erase_flash` followed by a
+> fresh factory image leaves nothing behind at all.
+
+The remaining trade is that anyone already on your LAN can reflash the board
+and open its web page. For a $12 display on a home network that is the usual
+bargain; if you would rather not, the config has commented blocks showing
+where to add an API encryption key and an OTA password.
 
 ---
 
@@ -244,31 +301,44 @@ version, and offers the update on its own web page (and in Home Assistant, if
 you use it). It never installs unattended — you press the button.
 
 Updating replaces only the application. Your wifi, Nightscout URL, token and
-thresholds all live in a separate flash area and are untouched.
+thresholds live in a separate flash area and are untouched — which is also why
+an update can never carry one person's settings onto another person's device.
 
-To publish builds for your own fork, host these two files together anywhere
-that serves plain HTTP(S) — GitHub Pages is the easy option:
+### Publishing your own builds
+
+`./make-release.sh "what changed"` does all of this: it copies both images
+into `docs/`, computes the MD5 and writes the manifest. Commit `docs/` and
+push — GitHub Pages serves it, and devices pointed at your fork pick it up on
+their next check.
+
+By hand, host these files together anywhere that serves plain HTTP(S):
 
 ```json
 {
-  "name": "Nightscout T-Display",
+  "name": "CGM Display",
   "version": "1.1.0",
   "builds": [
     {
       "chipFamily": "ESP32",
+      "parts": [
+        { "path": "cgm-display.factory.bin", "offset": 0 }
+      ],
       "ota": {
         "path": "cgm-display.ota.bin",
         "md5": "<md5sum of that file>",
-        "summary": "What changed",
-        "release_url": "https://github.com/you/your-fork/releases/tag/v1.1.0"
+        "summary": "What changed"
       }
     }
   ]
 }
 ```
 
-`path` is resolved relative to the manifest URL. The `.ota.bin` is produced by
-`esphome compile` under `.esphome/build/cgm-display/`.
+`path` is resolved relative to the manifest URL. Both images come out of
+`esphome compile` under `.esphome/build/cgm-display/build/` — `firmware.ota.bin`
+is the app alone, for devices already running this firmware, and
+`firmware.factory.bin` is the complete image for a blank board. The `parts`
+block is what browser-based ESP flashers read; `ota` is what the device's own
+update check reads.
 
 > ### Set the thresholds properly
 > They are placeholders out of the box. Every percentage the device
