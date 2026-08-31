@@ -728,8 +728,13 @@ script:
                     id(g_bg)    = v;
                     id(g_delta) = b["bgdelta"].as<float>();
                     id(g_dir)   = b["direction"].as<std::string>();
-                    id(g_iob) = b["iob"].is<float>() ? b["iob"].as<float>() : NAN;
-                    id(g_cob) = b["cob"].is<float>() ? b["cob"].as<float>() : NAN;
+                    // /pebble is inconsistent about these two: iob arrives as a
+                    // JSON *string* ("0", "1.25") while cob comes through as a
+                    // number. is<float>() is false for the string form, so every
+                    // real IOB became NAN and printed "--". as<float>() parses
+                    // either, leaving only a genuinely absent field as unknown.
+                    id(g_iob) = b["iob"].isNull() ? NAN : b["iob"].as<float>();
+                    id(g_cob) = b["cob"].isNull() ? NAN : b["cob"].as<float>();
                     double now_ms = 0, dt_ms = b["datetime"].as<double>();
                     if (root["status"].is<JsonArray>()) {
                       JsonArray st = root["status"].as<JsonArray>();
@@ -1767,6 +1772,19 @@ display:
                   "READING AGE");
         it.printf(236, 98, id(font_small), txt, TextAlign::TOP_RIGHT,
                   "%d:%02d", m, sec);
+        // Moved off the treatments page, where the third row ran into them.
+        // font_micro on the bottom margin: the delta/age row above ends near
+        // y=116, and both stay well clear of the blink dot centred at x=120.
+        if (isnan(id(g_cob)))
+          it.printf(6, 119, id(font_micro), txt, TextAlign::TOP_LEFT, "COB --");
+        else
+          it.printf(6, 119, id(font_micro), txt, TextAlign::TOP_LEFT,
+                    "COB %.0fg", id(g_cob));
+        if (isnan(id(g_iob)))
+          it.printf(236, 119, id(font_micro), txt, TextAlign::TOP_RIGHT, "IOB --");
+        else
+          it.printf(236, 119, id(font_micro), txt, TextAlign::TOP_RIGHT,
+                    "IOB %.2fU", id(g_iob));
         if (id(g_blink)) it.filled_circle(120, 128, 3, txt);
         return;
       }
@@ -1908,20 +1926,8 @@ display:
         // one line, so it clears both the third treatment row above and the
         // status strip below
         it.line(6, 96, 236, 96, G(id(c_dim)));
-        // What is still working, directly above what went in over the day.
-        it.printf(6,   86, id(font_tiny), G(id(c_dim)), TextAlign::TOP_LEFT, "NOW");
-        it.printf(66,  86, id(font_tiny), G(id(c_dim)), TextAlign::TOP_LEFT, "COB");
-        if (isnan(id(g_cob)))
-          it.printf(90, 86, id(font_tiny), G(id(c_faint)), TextAlign::TOP_LEFT, "--");
-        else
-          it.printf(90, 86, id(font_tiny), G(id(c_white)), TextAlign::TOP_LEFT,
-                    "%.0f g", id(g_cob));
-        it.printf(152, 86, id(font_tiny), G(id(c_dim)), TextAlign::TOP_LEFT, "IOB");
-        if (isnan(id(g_iob)))
-          it.printf(236, 86, id(font_tiny), G(id(c_faint)), TextAlign::TOP_RIGHT, "--");
-        else
-          it.printf(236, 86, id(font_tiny), G(id(c_in_range)), TextAlign::TOP_RIGHT,
-                    "%.2fU", id(g_iob));
+        // COB/IOB used to sit here at y=86, but the third treatment row (y=71,
+        // font_small) overran them. They now live on the main page instead.
         it.printf(6,   102, id(font_tiny), G(id(c_dim)), TextAlign::TOP_LEFT, "24H TOTAL");
         it.printf(66,  102, id(font_tiny), G(id(c_dim)), TextAlign::TOP_LEFT, "CRB");
         it.printf(90,  102, id(font_tiny), G(id(c_white)), TextAlign::TOP_LEFT,
