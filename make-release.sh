@@ -135,4 +135,17 @@ for p in b.get('parts',[]): print(p['path'])
 done
 [ "$fail" = 0 ] && echo "  all referenced images present and committable" || exit 1
 echo
-echo "Next: commit docs/ and push."
+cat <<NEXT
+Next:
+
+  git add -A && git commit -m "Release $VERSION: ..." && git push
+
+then publish it on the Releases page, which is where people look for a
+download (Pages only serves the update channel):
+
+  git tag v$VERSION && git push origin v$VERSION
+  gh release create v$VERSION \\
+    "docs/v$VERSION/$NAME.factory.bin#$NAME.factory.bin (full image - flash a blank board)" \\
+    "docs/v$VERSION/$NAME.ota.bin#$NAME.ota.bin (app only - for the device's own update)" \\
+    --title "$VERSION - $SUMMARY" --notes "..."
+NEXT

@@ -199,8 +199,8 @@ Two ways in. The first needs nothing but a USB cable.
 Every release publishes a complete image — bootloader, partition table and
 app — so a blank board needs no build tools at all.
 
-Download
-[`cgm-display.factory.bin`](https://erikpendragon.github.io/nightscout-tdisplay/cgm-display.factory.bin)
+Download `cgm-display.factory.bin` from the
+[latest release](https://github.com/erikpendragon/nightscout-tdisplay/releases/latest)
 and write it at offset 0:
 
 ```bash
