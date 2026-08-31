@@ -7,11 +7,14 @@
     {
       "chipFamily": "ESP32",
       "parts": [
-        { "path": "cgm-display.factory.bin", "offset": 0 }
+        {
+          "path": "cgm-display.factory.bin",
+          "offset": 0
+        }
       ],
       "ota": {
         "path": "cgm-display.ota.bin",
-        "md5": "c5abaa16308b9c1cb303b6a73e38a330",
+        "md5": "65f54f81147f5956426fd8d202df8260",
         "summary": "Factory Reset button; offline web UI; reservoir folded into pod; sensor life 264h"
       }
     }

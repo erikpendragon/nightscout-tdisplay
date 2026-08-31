@@ -7,11 +7,14 @@
     {
       "chipFamily": "ESP32",
       "parts": [
-        { "path": "cgm-display.factory.bin", "offset": 0 }
+        {
+          "path": "cgm-display.factory.bin",
+          "offset": 0
+        }
       ],
       "ota": {
         "path": "cgm-display.ota.bin",
-        "md5": "afb5a008f714079978c1d8fc928b6285",
+        "md5": "2b98d1f5f8f8d8975642f89b97cc080c",
         "summary": "Separate Install Update button; Use Nightscout Thresholds back to on for a new device"
       }
     }

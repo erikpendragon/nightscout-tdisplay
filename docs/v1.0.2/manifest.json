@@ -7,11 +7,14 @@
     {
       "chipFamily": "ESP32",
       "parts": [
-        { "path": "cgm-display.factory.bin", "offset": 0 }
+        {
+          "path": "cgm-display.factory.bin",
+          "offset": 0
+        }
       ],
       "ota": {
         "path": "cgm-display.ota.bin",
-        "md5": "6c6385d24c98d7b7720d6310b1c3da7c",
+        "md5": "e5c249a178927ccf93963ba30997b8cb",
         "summary": "Check for Updates button; UPDATE AVAILABLE on the diagnostics page; thresholds no longer auto-adopt by default; threshold ranges follow the units Nightscout reports"
       }
     }

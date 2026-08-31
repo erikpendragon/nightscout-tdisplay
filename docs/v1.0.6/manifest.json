@@ -7,11 +7,14 @@
     {
       "chipFamily": "ESP32",
       "parts": [
-        { "path": "cgm-display.factory.bin", "offset": 0 }
+        {
+          "path": "cgm-display.factory.bin",
+          "offset": 0
+        }
       ],
       "ota": {
         "path": "cgm-display.ota.bin",
-        "md5": "64579f173066cfd3fddae7c11567bbe9",
+        "md5": "925ea4da5eebcc5301d573b3768703a7",
         "summary": "Installed Version now populates; redundant Firmware row hidden"
       }
     }

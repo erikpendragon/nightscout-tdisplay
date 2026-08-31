@@ -7,11 +7,14 @@
     {
       "chipFamily": "ESP32",
       "parts": [
-        { "path": "cgm-display.factory.bin", "offset": 0 }
+        {
+          "path": "cgm-display.factory.bin",
+          "offset": 0
+        }
       ],
       "ota": {
         "path": "cgm-display.ota.bin",
-        "md5": "8385453513992293c2e0f69f8601bcce",
+        "md5": "9a43b5ab2623b43688dda1ff4a3a6967",
         "summary": "Installed Version and Update Status on the web page"
       }
     }

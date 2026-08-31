@@ -7,11 +7,14 @@
     {
       "chipFamily": "ESP32",
       "parts": [
-        { "path": "cgm-display.factory.bin", "offset": 0 }
+        {
+          "path": "cgm-display.factory.bin",
+          "offset": 0
+        }
       ],
       "ota": {
         "path": "cgm-display.ota.bin",
-        "md5": "e9dd246d92d04f3e49341acef47a6450",
+        "md5": "bfd7a65fcb387a286f4ec39984328ff0",
         "summary": "Update entity internal; real version comparison so a downgrade is not called an update"
       }
     }

@@ -7,11 +7,14 @@
     {
       "chipFamily": "ESP32",
       "parts": [
-        { "path": "cgm-display.factory.bin", "offset": 0 }
+        {
+          "path": "cgm-display.factory.bin",
+          "offset": 0
+        }
       ],
       "ota": {
         "path": "cgm-display.ota.bin",
-        "md5": "6755586ae431169c6f440a49b41f35d2",
+        "md5": "ee9dd86e62d8f020e8008e1a3e9261c9",
         "summary": "Firmware version on the diagnostics page; smaller UPDATE AVAILABLE notice"
       }
     }
