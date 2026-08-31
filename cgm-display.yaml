@@ -110,7 +110,7 @@ esphome:
   friendly_name: ${friendly_name}
   project:
     name: "erikpendragon.cgm-display"
-    version: "1.0.8"
+    version: "1.0.9"
   on_boot:
     priority: -100
     then:
@@ -508,6 +508,17 @@ globals:
     type: float
     restore_value: false
     initial_value: '0.0f'
+  # Nightscout works these out from the treatment log and returns them on
+  # /pebble beside the reading we already ask for, so they cost no extra
+  # request. NAN until the first fetch; the display shows "--" for that.
+  - id: g_iob
+    type: float
+    restore_value: false
+    initial_value: 'NAN'
+  - id: g_cob
+    type: float
+    restore_value: false
+    initial_value: 'NAN'
   - id: g_dir
     type: std::string
     restore_value: false
@@ -717,6 +728,8 @@ script:
                     id(g_bg)    = v;
                     id(g_delta) = b["bgdelta"].as<float>();
                     id(g_dir)   = b["direction"].as<std::string>();
+                    id(g_iob) = b["iob"].is<float>() ? b["iob"].as<float>() : NAN;
+                    id(g_cob) = b["cob"].is<float>() ? b["cob"].as<float>() : NAN;
                     double now_ms = 0, dt_ms = b["datetime"].as<double>();
                     if (root["status"].is<JsonArray>()) {
                       JsonArray st = root["status"].as<JsonArray>();
@@ -1895,6 +1908,20 @@ display:
         // one line, so it clears both the third treatment row above and the
         // status strip below
         it.line(6, 96, 236, 96, G(id(c_dim)));
+        // What is still working, directly above what went in over the day.
+        it.printf(6,   86, id(font_tiny), G(id(c_dim)), TextAlign::TOP_LEFT, "NOW");
+        it.printf(66,  86, id(font_tiny), G(id(c_dim)), TextAlign::TOP_LEFT, "COB");
+        if (isnan(id(g_cob)))
+          it.printf(90, 86, id(font_tiny), G(id(c_faint)), TextAlign::TOP_LEFT, "--");
+        else
+          it.printf(90, 86, id(font_tiny), G(id(c_white)), TextAlign::TOP_LEFT,
+                    "%.0f g", id(g_cob));
+        it.printf(152, 86, id(font_tiny), G(id(c_dim)), TextAlign::TOP_LEFT, "IOB");
+        if (isnan(id(g_iob)))
+          it.printf(236, 86, id(font_tiny), G(id(c_faint)), TextAlign::TOP_RIGHT, "--");
+        else
+          it.printf(236, 86, id(font_tiny), G(id(c_in_range)), TextAlign::TOP_RIGHT,
+                    "%.2fU", id(g_iob));
         it.printf(6,   102, id(font_tiny), G(id(c_dim)), TextAlign::TOP_LEFT, "24H TOTAL");
         it.printf(66,  102, id(font_tiny), G(id(c_dim)), TextAlign::TOP_LEFT, "CRB");
         it.printf(90,  102, id(font_tiny), G(id(c_white)), TextAlign::TOP_LEFT,
