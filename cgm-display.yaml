@@ -92,7 +92,7 @@ esphome:
   friendly_name: ${friendly_name}
   project:
     name: "erikpendragon.cgm-display"
-    version: "1.0.3"
+    version: "1.0.4"
   on_boot:
     priority: -100
     then:
@@ -1254,6 +1254,19 @@ button:
     on_press:
       - lambda: 'id(fw_update).check();'
 
+  # Checking and installing are deliberately separate: nothing downloads or
+  # reboots until you ask for it. A press with no update waiting does nothing -
+  # perform() returns unless the state is AVAILABLE.
+  - platform: template
+    name: "Install Update"
+    web_server:
+      sorting_group_id: grp_upd
+      sorting_weight: 4
+    on_press:
+      # perform(bool) hides the base class's no-arg overload, so it has to be
+      # called with the force flag. false = only act when an update is waiting.
+      - lambda: 'id(fw_update).perform(false);'
+
   - platform: factory_reset
     name: "Factory Reset"
     web_server:
@@ -1271,10 +1284,14 @@ switch:
       sorting_weight: 3
     id: sw_ns_th
     optimistic: true
-    # OFF by default, deliberately: turning it on overwrites the four values
-    # you typed, and that should be a decision rather than a surprise on the
-    # first boot.
-    restore_mode: RESTORE_DEFAULT_OFF
+    # On for a device that has never been set up, and whatever you last chose
+    # after that - restore_mode only supplies the default when there is no
+    # stored value. It does not re-decide on every boot.
+    #
+    # Safe to have on, because adopting thresholds only publish_state()s them.
+    # The values you typed stay in flash and come back the moment you turn
+    # this off.
+    restore_mode: RESTORE_DEFAULT_ON
   # The two buttons pressed together do the same thing - this is here so the
   # setting is discoverable on the web page rather than folded knowledge.
   # On Omnipod the reservoir sits inside the pod: both are replaced in the
