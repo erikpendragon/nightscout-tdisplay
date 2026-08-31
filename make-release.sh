@@ -19,7 +19,11 @@
 #
 # and writes docs/manifest.json describing both, which GitHub Pages serves.
 #
-#   ./make-release.sh "what changed" [ota.bin] [factory.bin]
+#   ./make-release.sh "what changed" ota.bin factory.bin resolved-config.yaml
+#
+# The resolved config is required: it is the only thing that can prove the
+# binaries were built without local credentials. Scanning the images cannot -
+# an API encryption key is stored decoded and never appears as a string.
 #
 # With no paths it looks in the usual ESPHome build directory. Compile first:
 #
@@ -33,6 +37,7 @@ NAME=cgm-display
 SUMMARY="${1:-Maintenance release}"
 OTA="${2:-}"
 FACTORY="${3:-}"
+BUILD_CONFIG="${4:-}"
 
 VERSION=$(awk '/^  project:/{f=1} f&&/version:/{gsub(/[" ]/,"");sub(/version:/,"");print;exit}' "$NAME.yaml")
 [ -n "$VERSION" ] || { echo "could not read project.version from $NAME.yaml"; exit 1; }
@@ -44,6 +49,53 @@ BUILD=".esphome/build/$NAME/build"
 [ -n "$OTA" ] && [ -f "$OTA" ] || {
   echo "No OTA image found. Compile first, or pass paths:"
   echo "  ./make-release.sh \"$SUMMARY\" firmware.ota.bin firmware.factory.bin"; exit 1; }
+
+# The binary scan below can only catch secrets that survive as literal
+# strings. An API encryption key does not - ESPHome stores the decoded bytes -
+# so scanning the output cannot prove a build was credential-free. The
+# guarantee has to come from the input: the resolved configuration the
+# binaries were actually built from.
+#
+# Produce it with:
+#   esphome config cgm-display-release.yaml > /tmp/resolved.yaml
+if [ -z "$BUILD_CONFIG" ]; then
+  echo "Refusing to publish: no build config given."
+  echo "  ./make-release.sh \"$SUMMARY\" ota.bin factory.bin resolved-config.yaml"
+  echo "Generate it from the SAME config that produced these binaries:"
+  echo "  esphome config cgm-display-release.yaml > resolved.yaml"
+  exit 1
+fi
+[ -f "$BUILD_CONFIG" ] || { echo "Build config not found: $BUILD_CONFIG"; exit 1; }
+
+cfgfail=0
+# strip the terminal escapes esphome wraps secrets in before matching
+plain=$(sed 's/\x1b\[[0-9;]*m//g' "$BUILD_CONFIG")
+# grep -c, never grep -q: under `set -o pipefail` a -q exits on the first
+# match, SIGPIPEs the producer, and the pipeline reports failure - so a HIT
+# reads as a MISS and the check silently passes everything.
+enc=$(printf '%s' "$plain" | grep -cE '^[[:space:]]+encryption:' || true)
+if [ "${enc:-0}" -gt 0 ]; then
+  echo "  REFUSING: build config declares api encryption - that is a local override"
+  cfgfail=1
+fi
+pw=$(printf '%s' "$plain" | grep -cE '^[[:space:]]+password:' || true)
+if [ "${pw:-0}" -gt 0 ]; then
+  echo "  REFUSING: build config declares a password - that is a local override"
+  cfgfail=1
+fi
+if [ -f .release-denylist ]; then
+  while IFS= read -r secret; do
+    [ -z "$secret" ] && continue
+    case "$secret" in \#*) continue ;; esac
+    n=$(printf '%s' "$plain" | grep -cF -- "$secret" || true)
+    if [ "${n:-0}" -gt 0 ]; then
+      echo "  REFUSING: build config contains a denylisted secret"
+      cfgfail=1
+    fi
+  done < .release-denylist
+fi
+[ "$cfgfail" = 0 ] || exit 1
+echo "  build config carries no credentials"
 
 echo "version $VERSION - $SUMMARY"
 mkdir -p docs

@@ -397,10 +397,25 @@ manifest it is watching never changes.
 
 ### Publishing your own builds
 
-`./make-release.sh "what changed"` does all of this: it copies both images
-into `docs/`, computes the MD5 and writes the manifest. Commit `docs/` and
-push — GitHub Pages serves it, and devices pointed at your fork pick it up on
-their next check.
+`make-release.sh` does all of this — it copies both images into `docs/`,
+computes the MD5 and writes the manifest:
+
+```bash
+esphome compile cgm-display-release.yaml           # a config with NO local overrides
+esphome config  cgm-display-release.yaml > /tmp/resolved.yaml
+./make-release.sh "what changed" firmware.ota.bin firmware.factory.bin /tmp/resolved.yaml
+```
+
+The resolved config is required, and the script refuses to publish if it
+declares a password or API encryption. That check is on the *input* on
+purpose: scanning the compiled image cannot prove a build was
+credential-free, because an API encryption key is stored decoded and never
+appears in the binary as a string. Build releases from a config with no local
+overrides — building from the one you flash your own device with bakes its
+OTA password into a public file.
+
+Commit `docs/` and push — GitHub Pages serves it, and devices pointed at your
+fork pick it up on their next check.
 
 By hand, host these files together anywhere that serves plain HTTP(S):
 
