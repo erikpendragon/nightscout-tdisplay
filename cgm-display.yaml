@@ -110,7 +110,7 @@ esphome:
   friendly_name: ${friendly_name}
   project:
     name: "erikpendragon.cgm-display"
-    version: "1.0.10"
+    version: "1.0.13"
   on_boot:
     priority: -100
     then:
@@ -120,7 +120,12 @@ esphome:
           // A template text_sensor with update_interval: never never runs its
           // lambda, so the version has to be published once, here.
           id(ts_fw_version).publish_state(ESPHOME_PROJECT_VERSION);
-          id(ts_upd_status).publish_state("Not checked yet");
+          // on_boot is priority -100, so it runs after the manifest URL has
+          // been restored and would otherwise stamp "Not checked yet" over
+          // the disabled notice every power-up.
+          id(ts_upd_status).publish_state(id(g_upd_off)
+            ? "Updates disabled - set a manifest URL to re-enable"
+            : "Not checked yet");
 
 esp32:
   board: esp32dev
@@ -272,9 +277,19 @@ text:
     initial_value: "${fw_manifest}"
     on_value:
       - lambda: |-
-          if (!x.empty()) {
+          if (x.empty()) {
+            // Genuinely off, not "ignored": the component is pointed at an
+            // empty source so its own six-hourly poll cannot find anything,
+            // and both buttons refuse below.
+            id(g_upd_off) = true;
+            id(fw_update).set_source_url("");
+            id(ts_upd_status).publish_state("Updates disabled - set a manifest URL to re-enable");
+            ESP_LOGI("cgm", "update manifest cleared - updates disabled");
+          } else {
+            id(g_upd_off) = false;
             id(fw_update).set_source_url(x);
-            ESP_LOGI("cgm", "update manifest -> %s", x.c_str());
+            id(ts_upd_status).publish_state("Not checked yet");
+            ESP_LOGI("cgm", "update manifest set");
           }
   - platform: template
     # Only needed if your Nightscout requires auth. A read-only token is
@@ -511,6 +526,13 @@ globals:
   # Nightscout works these out from the treatment log and returns them on
   # /pebble beside the reading we already ask for, so they cost no extra
   # request. NAN until the first fetch; the display shows "--" for that.
+  # Blanking the manifest URL means "stop updating". Without this the empty
+  # value was simply ignored and the previous URL stayed live, so a setting
+  # that looked like an off switch quietly was not one.
+  - id: g_upd_off
+    type: bool
+    restore_value: false
+    initial_value: 'false'
   - id: g_iob
     type: float
     restore_value: false
@@ -733,6 +755,11 @@ script:
                     // number. is<float>() is false for the string form, so every
                     // real IOB became NAN and printed "--". as<float>() parses
                     // either, leaving only a genuinely absent field as unknown.
+                    // Parsed but not currently shown anywhere - too small to be
+                    // useful at the sizes the bottom margin allows, and the main
+                    // page is meant to be readable from across the room. Kept
+                    // because /pebble returns them either way, so they cost
+                    // nothing and can be put back wherever they earn the space.
                     id(g_iob) = b["iob"].isNull() ? NAN : b["iob"].as<float>();
                     id(g_cob) = b["cob"].isNull() ? NAN : b["cob"].as<float>();
                     double now_ms = 0, dt_ms = b["datetime"].as<double>();
@@ -1296,35 +1323,42 @@ button:
       sorting_group_id: grp_upd
       sorting_weight: 4
     on_press:
-      - lambda: |-
-          id(ts_upd_status).publish_state("Checking...");
-          id(fw_update).check();
-      # Held so the "Checking..." is actually visible - the fetch itself can
-      # come back faster than anyone can read it.
-      - delay: 4s
-      - lambda: |-
-          const std::string &lv = id(fw_update).update_info.latest_version;
-          switch (id(fw_update).state) {
-            case update::UPDATE_STATE_AVAILABLE:
-              // The component only checks that the strings differ, so a
-              // manifest naming an OLDER build also reads as "available".
-              // Say which it is rather than calling a downgrade an update.
-              if (version_is_newer(lv, ESPHOME_PROJECT_VERSION))
-                id(ts_upd_status).publish_state("Update available: " + lv);
-              else
-                id(ts_upd_status).publish_state(
-                  "Manifest offers " + lv + " - older than the " +
-                  ESPHOME_PROJECT_VERSION + " installed");
-              break;
-            case update::UPDATE_STATE_NO_UPDATE:
-              id(ts_upd_status).publish_state("Up to date");
-              break;
-            case update::UPDATE_STATE_INSTALLING:
-              id(ts_upd_status).publish_state("Installing...");
-              break;
-            default:
-              id(ts_upd_status).publish_state("Check failed - could not reach the manifest");
-          }
+      - if:
+          condition:
+            lambda: 'return id(g_upd_off);'
+          then:
+            - lambda: |-
+                id(ts_upd_status).publish_state("Updates disabled - set a manifest URL to re-enable");
+          else:
+            - lambda: |-
+                id(ts_upd_status).publish_state("Checking...");
+                id(fw_update).check();
+            # Held so the "Checking..." is actually visible - the fetch itself can
+            # come back faster than anyone can read it.
+            - delay: 4s
+            - lambda: |-
+                const std::string &lv = id(fw_update).update_info.latest_version;
+                switch (id(fw_update).state) {
+                  case update::UPDATE_STATE_AVAILABLE:
+                    // The component only checks that the strings differ, so a
+                    // manifest naming an OLDER build also reads as "available".
+                    // Say which it is rather than calling a downgrade an update.
+                    if (version_is_newer(lv, ESPHOME_PROJECT_VERSION))
+                      id(ts_upd_status).publish_state("Update available: " + lv);
+                    else
+                      id(ts_upd_status).publish_state(
+                        "Manifest offers " + lv + " - older than the " +
+                        ESPHOME_PROJECT_VERSION + " installed");
+                    break;
+                  case update::UPDATE_STATE_NO_UPDATE:
+                    id(ts_upd_status).publish_state("Up to date");
+                    break;
+                  case update::UPDATE_STATE_INSTALLING:
+                    id(ts_upd_status).publish_state("Installing...");
+                    break;
+                  default:
+                    id(ts_upd_status).publish_state("Check failed - could not reach the manifest");
+                }
 
   # Checking and installing are deliberately separate: nothing downloads or
   # reboots until you ask for it. A press with no update waiting does nothing -
@@ -1337,7 +1371,12 @@ button:
     on_press:
       # perform(bool) hides the base class's no-arg overload, so it has to be
       # called with the force flag. false = only act when an update is waiting.
-      - lambda: 'id(fw_update).perform(false);'
+      - lambda: |-
+          if (id(g_upd_off)) {
+            id(ts_upd_status).publish_state("Updates disabled - set a manifest URL to re-enable");
+            return;
+          }
+          id(fw_update).perform(false);
 
   - platform: factory_reset
     name: "Factory Reset"
@@ -1772,19 +1811,6 @@ display:
                   "READING AGE");
         it.printf(236, 98, id(font_small), txt, TextAlign::TOP_RIGHT,
                   "%d:%02d", m, sec);
-        // Moved off the treatments page, where the third row ran into them.
-        // font_micro on the bottom margin: the delta/age row above ends near
-        // y=116, and both stay well clear of the blink dot centred at x=120.
-        if (isnan(id(g_cob)))
-          it.printf(6, 119, id(font_micro), txt, TextAlign::TOP_LEFT, "COB --");
-        else
-          it.printf(6, 119, id(font_micro), txt, TextAlign::TOP_LEFT,
-                    "COB %.0fg", id(g_cob));
-        if (isnan(id(g_iob)))
-          it.printf(236, 119, id(font_micro), txt, TextAlign::TOP_RIGHT, "IOB --");
-        else
-          it.printf(236, 119, id(font_micro), txt, TextAlign::TOP_RIGHT,
-                    "IOB %.2fU", id(g_iob));
         if (id(g_blink)) it.filled_circle(120, 128, 3, txt);
         return;
       }

@@ -397,6 +397,10 @@ follow the newest build:
 |---|---|
 | `…/nightscout-tdisplay/manifest.json` | follows the latest release (default) |
 | `…/nightscout-tdisplay/v1.0.1/manifest.json` | pinned to 1.0.1, ignores anything newer |
+| *(blank)* | updates off — the six-hourly check stops and both buttons decline |
+
+Clearing the field really does turn updates off; **Update Status** says so, and
+it stays off across reboots until you put a URL back.
 
 Setting it to an *older* version downgrades: the device compares versions by
 string equality rather than ordering, so it treats "different" as "update
@@ -404,6 +408,14 @@ available" and installs it. That is also why a pinned device stays put — the
 manifest it is watching never changes.
 
 [`docs/VERSIONS.md`](docs/VERSIONS.md) lists what is available.
+
+### If you build your own firmware
+
+**Install Update** flashes whatever the manifest points at, so on a device you
+build yourself it will replace your build with the project's — it only ever
+compares version *strings*, so it will do that even when the manifest is behind
+you. Point **Update Manifest URL** at your own release, or clear it to turn
+updates off.
 
 ## What it asks Nightscout for
 
