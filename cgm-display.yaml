@@ -110,7 +110,7 @@ esphome:
   friendly_name: ${friendly_name}
   project:
     name: "erikpendragon.cgm-display"
-    version: "1.0.13"
+    version: "1.0.14"
   on_boot:
     priority: -100
     then:
@@ -120,9 +120,17 @@ esphome:
           // A template text_sensor with update_interval: never never runs its
           // lambda, so the version has to be published once, here.
           id(ts_fw_version).publish_state(ESPHOME_PROJECT_VERSION);
-          // on_boot is priority -100, so it runs after the manifest URL has
-          // been restored and would otherwise stamp "Not checked yet" over
-          // the disabled notice every power-up.
+          // Restoring a saved value does NOT fire the text's on_value, so the
+          // boot path has to apply it itself. That was invisible while the
+          // field was always set - source: ${fw_manifest} is compiled in, and
+          // on_value only ever mattered when someone edited the field. With a
+          // blank saved value it is not invisible at all: the compiled-in URL
+          // stays live, so the field reads empty while updates quietly run.
+          const std::string &saved = id(fw_url).state;
+          id(g_upd_off) = saved.empty();
+          id(fw_update).set_source_url(saved);
+          if (id(g_upd_off))
+            id(fw_update).stop_poller();
           id(ts_upd_status).publish_state(id(g_upd_off)
             ? "Updates disabled - set a manifest URL to re-enable"
             : "Not checked yet");
@@ -283,11 +291,17 @@ text:
             // and both buttons refuse below.
             id(g_upd_off) = true;
             id(fw_update).set_source_url("");
+            // Stop the six-hourly poll as well, so "off" means nothing runs
+            // rather than a fetch that fails quietly every six hours.
+            id(fw_update).stop_poller();
             id(ts_upd_status).publish_state("Updates disabled - set a manifest URL to re-enable");
             ESP_LOGI("cgm", "update manifest cleared - updates disabled");
           } else {
+            bool was_off = id(g_upd_off);
             id(g_upd_off) = false;
             id(fw_update).set_source_url(x);
+            if (was_off)
+              id(fw_update).start_poller();
             id(ts_upd_status).publish_state("Not checked yet");
             ESP_LOGI("cgm", "update manifest set");
           }
