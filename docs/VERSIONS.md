@@ -7,6 +7,7 @@ manifest. It will then stay there until you point it somewhere else.
 
 | Version | Manifest URL to pin to | Full image |
 |---|---|---|
+| `1.0.13` | `https://erikpendragon.github.io/nightscout-tdisplay/v1.0.13/manifest.json` | [factory.bin](https://erikpendragon.github.io/nightscout-tdisplay/v1.0.13/cgm-display.factory.bin) |
 | `1.0.10` | `https://erikpendragon.github.io/nightscout-tdisplay/v1.0.10/manifest.json` | [factory.bin](https://erikpendragon.github.io/nightscout-tdisplay/v1.0.10/cgm-display.factory.bin) |
 | `1.0.9` | `https://erikpendragon.github.io/nightscout-tdisplay/v1.0.9/manifest.json` | [factory.bin](https://erikpendragon.github.io/nightscout-tdisplay/v1.0.9/cgm-display.factory.bin) |
 | `1.0.8` | `https://erikpendragon.github.io/nightscout-tdisplay/v1.0.8/manifest.json` | [factory.bin](https://erikpendragon.github.io/nightscout-tdisplay/v1.0.8/cgm-display.factory.bin) |
