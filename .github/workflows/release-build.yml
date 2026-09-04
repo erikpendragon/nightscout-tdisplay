@@ -94,14 +94,15 @@ jobs:
       - name: Prove the build carried no credentials
         run: |
           docker run --rm -v "$PWD":/config -u "$(id -u):$(id -g)" \
-            "ghcr.io/esphome/esphome:${ESPHOME_VERSION}" config cgm-display.yaml \
-            -s local_build "${LOCAL_BUILD}" \
+            "ghcr.io/esphome/esphome:${ESPHOME_VERSION}" \
+            -s local_build "${LOCAL_BUILD}" config cgm-display.yaml \
             > /tmp/resolved.yaml
           sed -i 's/\x1b\[[0-9;]*m//g' /tmp/resolved.yaml
           # Prove the marker actually took, rather than trusting that passing
           # it worked. An official image that quietly built as local would
           # refuse to install itself and nobody would know why.
-          got=$(grep -m1 -E '^  local_build:' /tmp/resolved.yaml | awk '{print $2}')
+          # esphome emits the value quoted: local_build: 'false'
+          got=$(grep -m1 -E '^  local_build:' /tmp/resolved.yaml | awk '{print $2}' | tr -d "'\"")
           echo "local_build in the compiled config: ${got}"
           if [ "$got" != "${LOCAL_BUILD}" ]; then
             echo "::error::local_build is '$got', expected '${LOCAL_BUILD}'"
