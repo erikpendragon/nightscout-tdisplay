@@ -1,0 +1,132 @@
+# Builds the PUBLIC firmware - the credential-free images the device OTAs to.
+#
+# The whole point of building here rather than on a machine at home: this
+# runner has no secrets.yaml, no OTA password and no API key. It cannot bake a
+# credential into a published image, because there is none to bake. That is a
+# structural guarantee rather than a procedural one, and it replaces the two
+# ways this has gone wrong before - v1.0.1-1.0.8 were built from the config
+# that flashes a real device and carried its OTA password, and "1.0.13" was
+# built from a stale config and was actually 1.0.12.
+#
+# Nothing here publishes. A tag produces a DRAFT release for a human to look
+# at; the update channel is only touched once that draft is published, by
+# release-publish.yml.
+
+name: Build release firmware
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      esphome_version:
+        description: "ESPHome version to build with"
+        required: false
+        default: "latest"
+
+permissions:
+  contents: write        # create the draft release. Nothing else.
+
+env:
+  # Pinned so the compile and the credential audit below run the SAME esphome.
+  # A skew between them is exactly where a guard stops proving anything.
+  ESPHOME_VERSION: ${{ inputs.esphome_version || 'latest' }}
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      # The tag and the config must agree on the version. This is the guard
+      # that would have caught "1.0.13", which shipped 1.0.12 successfully and
+      # silently. Skipped for a manual dry run, which has no tag.
+      - name: Tag must match project.version
+        if: startsWith(github.ref, 'refs/tags/')
+        run: |
+          cfg=$(awk '/^  project:/{f=1} f&&/version:/{gsub(/[" ]/,"");sub(/version:/,"");print;exit}' cgm-display.yaml)
+          tag="${GITHUB_REF_NAME#v}"
+          echo "config=$cfg  tag=$tag"
+          if [ "$cfg" != "$tag" ]; then
+            echo "::error::tag v$tag does not match project.version $cfg - refusing to build"
+            exit 1
+          fi
+
+      # web-ui.js is gitignored on purpose (230 KB of vendored upstream), so
+      # it has to be rebuilt here or js_include has nothing to serve.
+      - name: Build the web UI bundle
+        run: ./build-webui.sh
+
+      - name: Compile
+        id: build
+        uses: esphome/build-action@v8.1.0
+        with:
+          yaml-file: cgm-display.yaml
+          version: ${{ env.ESPHOME_VERSION }}
+
+      # Belt and braces. The runner holds no secrets, so this should be
+      # impossible to fail - which is the point: if it ever does fail,
+      # something is badly wrong and publishing must stop.
+      #
+      # There is deliberately no .release-denylist here. That file holds real
+      # secret values and is gitignored; putting it in CI would mean uploading
+      # the very things we are trying to keep out. Absence of secrets beats
+      # scanning for them.
+      - name: Prove the build carried no credentials
+        run: |
+          docker run --rm -v "$PWD":/config -u "$(id -u):$(id -g)" \
+            "ghcr.io/esphome/esphome:${ESPHOME_VERSION}" config cgm-display.yaml \
+            > /tmp/resolved.yaml
+          sed -i 's/\x1b\[[0-9;]*m//g' /tmp/resolved.yaml
+          # grep -c and compare the count, never grep -q: under pipefail a -q
+          # exits on first match, SIGPIPEs the producer, and a HIT reads as a
+          # MISS. That bug shipped twice in make-release.sh.
+          pw=$(grep -cE '^[[:space:]]+password:' /tmp/resolved.yaml || true)
+          en=$(grep -cE '^[[:space:]]+encryption:' /tmp/resolved.yaml || true)
+          echo "password lines: $pw   encryption lines: $en"
+          if [ "$pw" != "0" ] || [ "$en" != "0" ]; then
+            echo "::error::resolved config declares credentials - refusing to publish"
+            exit 1
+          fi
+
+      - name: Assemble manifest and docs/
+        run: |
+          summary="${{ github.event.head_commit.message }}"
+          summary=$(printf '%s' "$summary" | head -1)
+          [ -n "$summary" ] || summary="Maintenance release"
+          ./make-release.sh "$summary" \
+            "${{ steps.build.outputs.name }}/cgm-display.ota.bin" \
+            "${{ steps.build.outputs.name }}/cgm-display.factory.bin" \
+            /tmp/resolved.yaml
+
+      # Always uploaded, tag or dry run. This is what you inspect.
+      - name: Upload for inspection
+        uses: actions/upload-artifact@v4
+        with:
+          name: firmware-${{ steps.build.outputs.project-version }}
+          path: |
+            docs/manifest.json
+            docs/cgm-display.ota.bin
+            docs/cgm-display.factory.bin
+          retention-days: 30
+
+      # DRAFT. Creates nothing anyone can download and does not touch the
+      # update channel. Publishing it by hand is what makes it real.
+      - name: Create draft release
+        if: startsWith(github.ref, 'refs/tags/')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          v="${GITHUB_REF_NAME#v}"
+          {
+            echo "Built by CI from ${GITHUB_SHA}."
+            echo
+            echo "Credential-free: the resolved config declared no password and no encryption key."
+            echo
+            echo "Publishing this release updates the device update channel."
+          } > /tmp/notes.md
+          gh release create "$GITHUB_REF_NAME" --draft \
+            --title "$v - $(git log -1 --pretty=%s)" \
+            --notes-file /tmp/notes.md \
+            "docs/cgm-display.factory.bin#cgm-display.factory.bin (full image - flash a blank board)" \
+            "docs/cgm-display.ota.bin#cgm-display.ota.bin (app only - for the device's own update)"

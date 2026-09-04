@@ -1,0 +1,95 @@
+# Turns a published release into the live update channel.
+#
+# Runs only when a human presses Publish on the draft that release-build.yml
+# created. Until then the channel is untouched and no device sees anything.
+#
+# It does NOT rebuild. It downloads the exact binaries that were attached to
+# the release you just inspected and publishes those bytes. A rebuild here
+# could differ from what you approved - build-webui.sh fetches the upstream UI
+# bundle at build time, so two builds of the same commit are not guaranteed
+# byte-identical - and then the thing audited would not be the thing shipped.
+
+name: Publish release to the update channel
+
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: write        # commit docs/ back to main
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      # Two checkouts on purpose. The manifest must be generated from the
+      # source that was TAGGED, while docs/ is committed to main. Assuming
+      # they are the same is how a release once shipped the wrong version.
+      - name: Check out the tagged source
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event.release.tag_name }}
+          path: src
+
+      - name: Check out main
+        uses: actions/checkout@v5
+        with:
+          ref: main
+          path: main
+
+      - name: Download the approved binaries
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p bins
+          gh release download "${{ github.event.release.tag_name }}" \
+            -R "$GITHUB_REPOSITORY" -D bins \
+            -p 'cgm-display.ota.bin' -p 'cgm-display.factory.bin'
+          ls -l bins
+
+      - name: Re-prove no credentials, then assemble docs/
+        working-directory: src
+        run: |
+          docker run --rm -v "$PWD":/config -u "$(id -u):$(id -g)" \
+            ghcr.io/esphome/esphome:latest config cgm-display.yaml \
+            > /tmp/resolved.yaml
+          sed -i 's/\x1b\[[0-9;]*m//g' /tmp/resolved.yaml
+          pw=$(grep -cE '^[[:space:]]+password:' /tmp/resolved.yaml || true)
+          en=$(grep -cE '^[[:space:]]+encryption:' /tmp/resolved.yaml || true)
+          if [ "$pw" != "0" ] || [ "$en" != "0" ]; then
+            echo "::error::tagged config declares credentials - refusing to publish"
+            exit 1
+          fi
+          # docs/ from main, so previously published versions are all still
+          # here and VERSIONS.md regenerates with the full list.
+          rm -rf docs && cp -R ../main/docs docs
+          ./make-release.sh "${{ github.event.release.name }}" \
+            ../bins/cgm-display.ota.bin \
+            ../bins/cgm-display.factory.bin \
+            /tmp/resolved.yaml
+
+      # The manifest promises an md5. Prove the file it points at actually has
+      # it before this reaches a device that will refuse a mismatch.
+      - name: Verify the manifest against the binary
+        working-directory: src
+        run: |
+          want=$(python3 -c "import json;print(json.load(open('docs/manifest.json'))['builds'][0]['ota']['md5'])")
+          got=$(md5sum docs/cgm-display.ota.bin | cut -d' ' -f1)
+          echo "manifest=$want  actual=$got"
+          [ "$want" = "$got" ] || { echo "::error::manifest md5 does not match the binary"; exit 1; }
+
+      - name: Commit the update channel
+        working-directory: main
+        run: |
+          rm -rf docs && cp -R ../src/docs docs
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add docs
+          if git diff --cached --quiet; then
+            echo "docs/ unchanged - nothing to publish"
+            exit 0
+          fi
+          git commit \
+            -m "Publish ${{ github.event.release.tag_name }} to the update channel" \
+            -m "Binaries are the ones attached to the release, not a rebuild."
+          git push origin main
