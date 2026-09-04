@@ -12,7 +12,7 @@
       "ota": {
         "path": "cgm-display.ota.bin",
         "md5": "d8277ae0e12b4024084da175a1ef4502",
-        "summary": "1.0.17 - Screen dimming, an out-of-range alert, and safer local builds"
+        "summary": "Screen dimming, an out-of-range alert, and safer local builds"
       }
     }
   ]
