@@ -31,6 +31,9 @@ env:
   # Pinned so the compile and the credential audit below run the SAME esphome.
   # A skew between them is exactly where a guard stops proving anything.
   ESPHOME_VERSION: ${{ inputs.esphome_version || 'latest' }}
+  # One place, used by BOTH the compile and the audit below. If they disagree,
+  # the audited config is not the compiled config and the guard proves nothing.
+  LOCAL_BUILD: "false"
 
 jobs:
   build:
@@ -78,7 +81,7 @@ jobs:
           # If this line is ever dropped, official builds simply stop
           # self-installing. That is the harmless direction of the two.
           substitutions: |
-            local_build=false
+            local_build=${{ env.LOCAL_BUILD }}
 
       # Belt and braces. The runner holds no secrets, so this should be
       # impossible to fail - which is the point: if it ever does fail,
@@ -92,8 +95,18 @@ jobs:
         run: |
           docker run --rm -v "$PWD":/config -u "$(id -u):$(id -g)" \
             "ghcr.io/esphome/esphome:${ESPHOME_VERSION}" config cgm-display.yaml \
+            -s local_build "${LOCAL_BUILD}" \
             > /tmp/resolved.yaml
           sed -i 's/\x1b\[[0-9;]*m//g' /tmp/resolved.yaml
+          # Prove the marker actually took, rather than trusting that passing
+          # it worked. An official image that quietly built as local would
+          # refuse to install itself and nobody would know why.
+          got=$(grep -m1 -E '^  local_build:' /tmp/resolved.yaml | awk '{print $2}')
+          echo "local_build in the compiled config: ${got}"
+          if [ "$got" != "${LOCAL_BUILD}" ]; then
+            echo "::error::local_build is '$got', expected '${LOCAL_BUILD}'"
+            exit 1
+          fi
           # grep -c and compare the count, never grep -q: under pipefail a -q
           # exits on first match, SIGPIPEs the producer, and a HIT reads as a
           # MISS. That bug shipped twice in make-release.sh.
