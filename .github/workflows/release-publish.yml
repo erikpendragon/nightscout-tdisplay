@@ -14,9 +14,19 @@ name: Publish release to the update channel
 on:
   release:
     types: [published]
+  # So a failed publish can be retried without un-publishing and re-publishing
+  # the release, which is what the first real run needed.
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Tag of an already-published release to push to the channel"
+        required: true
 
 permissions:
   contents: write        # commit docs/ back to main
+
+env:
+  TAG: ${{ github.event.release.tag_name || inputs.tag }}
 
 jobs:
   publish:
@@ -28,7 +38,7 @@ jobs:
       - name: Check out the tagged source
         uses: actions/checkout@v5
         with:
-          ref: ${{ github.event.release.tag_name }}
+          ref: ${{ env.TAG }}
           path: src
 
       - name: Check out main
@@ -37,21 +47,31 @@ jobs:
           ref: main
           path: main
 
+      # web-ui.js is gitignored (230 KB of vendored upstream) and generated,
+      # so no checkout contains it. Without it js_include points at a missing
+      # file and `esphome config` fails - which is exactly how the first real
+      # publish died, after the release had already gone public.
+      - name: Build the web UI bundle
+        working-directory: src
+        run: ./build-webui.sh
+
       - name: Download the approved binaries
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           mkdir -p bins
-          gh release download "${{ github.event.release.tag_name }}" \
+          gh release download "${{ env.TAG }}" \
             -R "$GITHUB_REPOSITORY" -D bins \
             -p 'cgm-display.ota.bin' -p 'cgm-display.factory.bin'
           ls -l bins
 
       - name: Re-prove no credentials, then assemble docs/
         working-directory: src
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           docker run --rm -v "$PWD":/config -u "$(id -u):$(id -g)" \
-            ghcr.io/esphome/esphome:latest config cgm-display.yaml \
+            ghcr.io/esphome/esphome:latest -s local_build false config cgm-display.yaml \
             > /tmp/resolved.yaml
           sed -i 's/\x1b\[[0-9;]*m//g' /tmp/resolved.yaml
           pw=$(grep -cE '^[[:space:]]+password:' /tmp/resolved.yaml || true)
@@ -63,7 +83,10 @@ jobs:
           # docs/ from main, so previously published versions are all still
           # here and VERSIONS.md regenerates with the full list.
           rm -rf docs && cp -R ../main/docs docs
-          ./make-release.sh "${{ github.event.release.name }}" \
+          title=$(gh release view "$TAG" -R "$GITHUB_REPOSITORY" --json name -q '.name')
+          [ -n "$title" ] || title="Maintenance release"
+          echo "release title: $title"
+          ./make-release.sh "$title" \
             ../bins/cgm-display.ota.bin \
             ../bins/cgm-display.factory.bin \
             /tmp/resolved.yaml
@@ -90,6 +113,6 @@ jobs:
             exit 0
           fi
           git commit \
-            -m "Publish ${{ github.event.release.tag_name }} to the update channel" \
+            -m "Publish ${{ env.TAG }} to the update channel" \
             -m "Binaries are the ones attached to the release, not a rebuild."
           git push origin main
