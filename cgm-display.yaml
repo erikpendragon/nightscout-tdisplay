@@ -63,6 +63,24 @@ substitutions:
   # you publish your own builds.
   fw_manifest: "https://erikpendragon.github.io/nightscout-tdisplay/manifest.json"
 
+  # Was this image built by hand, or by the project's CI?
+  #
+  # A hand-built image carries its owner's own substitutions - device name,
+  # friendly name, API encryption key, OTA password - and NONE of those survive
+  # being overwritten by a stock image, because they are compiled in rather
+  # than stored on the device. Installing a published build over a local one
+  # therefore throws that work away silently.
+  #
+  # So a local build still checks, still says which version is waiting, and
+  # refuses to install it - telling you to press Install in your own ESPHome
+  # instead, which rebuilds that same version WITH your settings.
+  #
+  # CI passes local_build=false. The default is true ON PURPOSE: an image
+  # nobody marked is treated as local, so the worst case is an official build
+  # that will not install itself, which is merely annoying. The other way round
+  # would quietly wipe somebody's encryption key.
+  local_build: "true"
+
   # ---- glucose units -------------------------------------------------------
   # The display auto-detects mg/dL vs mmol/L from Nightscout for formatting,
   # but the threshold sliders need sane ranges at compile time. Defaults are
@@ -113,7 +131,7 @@ esphome:
   friendly_name: ${friendly_name}
   project:
     name: "erikpendragon.cgm-display"
-    version: "1.0.16"
+    version: "1.0.17"
   on_boot:
     priority: -100
     then:
@@ -750,6 +768,12 @@ globals:
   # power-up override ends when the first reading lands, a button wake ends
   # when the page timeout returns to the main page. Neither is restored -
   # both describe this boot only.
+  # Compile-time, from the local_build substitution above. Not restored -
+  # it describes the image, not the installation.
+  - id: g_local_build
+    type: bool
+    restore_value: false
+    initial_value: '${local_build}'
   - id: g_boot_lit
     type: bool
     restore_value: false
@@ -1548,7 +1572,10 @@ button:
                     // manifest naming an OLDER build also reads as "available".
                     // Say which it is rather than calling a downgrade an update.
                     if (version_is_newer(lv, ESPHOME_PROJECT_VERSION))
-                      id(ts_upd_status).publish_state("Update available: " + lv);
+                      id(ts_upd_status).publish_state(
+                        id(g_local_build)
+                          ? lv + " available - press Install in your own ESPHome"
+                          : "Update available: " + lv);
                     else
                       id(ts_upd_status).publish_state(
                         "Manifest offers " + lv + " - older than the " +
@@ -1578,6 +1605,19 @@ button:
       - lambda: |-
           if (id(g_upd_off)) {
             id(ts_upd_status).publish_state("Updates disabled - set a manifest URL to re-enable");
+            return;
+          }
+          // Installing a stock image over a hand-built one discards the
+          // things that are compiled in rather than stored - device name,
+          // friendly name, encryption key, OTA password. Refuse, and say
+          // where the update actually comes from for this device.
+          if (id(g_local_build)) {
+            const std::string &lv = id(fw_update).update_info.latest_version;
+            id(ts_upd_status).publish_state(
+              lv.empty()
+                ? "Local build - install from your own ESPHome, not from here"
+                : "Local build - press Install in your own ESPHome to get " +
+                  lv + " with your own settings");
             return;
           }
           id(fw_update).perform(false);
@@ -2451,7 +2491,9 @@ display:
                            ESPHOME_PROJECT_VERSION)) {
         it.printf(236, 39, id(font_small), G(id(c_urgent_low)), TextAlign::TOP_RIGHT,
                   "UPDATE");
+        // A local build cannot take this update from here, so the screen
+        // says what to do rather than offering something that will refuse.
         it.printf(236, 58, id(font_small), G(id(c_urgent_low)), TextAlign::TOP_RIGHT,
-                  "AVAILABLE");
+                  "%s", id(g_local_build) ? "BUILD LOCALLY" : "AVAILABLE");
       }
       status();
