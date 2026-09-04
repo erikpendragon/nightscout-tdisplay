@@ -157,7 +157,12 @@ esphome:
                                            : DISPLAY_ROTATION_90_DEGREES);
           // A template text_sensor with update_interval: never never runs its
           // lambda, so the version has to be published once, here.
-          id(ts_fw_version).publish_state(ESPHOME_PROJECT_VERSION);
+          // Say which kind of image this is, right next to the version and
+          // on the page that carries the Install button. Someone whose
+          // Install refuses should not have to guess why.
+          id(ts_fw_version).publish_state(
+            id(g_local_build) ? std::string(ESPHOME_PROJECT_VERSION) + " (local build)"
+                              : std::string(ESPHOME_PROJECT_VERSION));
           // Restoring a saved value does NOT fire the text's on_value, so the
           // boot path has to apply it itself. That was invisible while the
           // field was always set - source: ${fw_manifest} is compiled in, and
