@@ -14,8 +14,9 @@ secrets.yaml
 .DS_Store
 *.swp
 
-# Second layer of defence. Anything about the incident, the support ticket,
-# or a real person's data lives in ../cgm-private/ and must never land here.
+# Second layer of defence. Anything about the incident, the support ticket, or
+# a real person's data lives in the local-only `cgm-private/` folder (in the
+# Smart Home project) and must never land here.
 *SUPPORT*
 *TICKET*
 *AUDIT*
@@ -29,4 +30,7 @@ cgm-private/
 web-ui.js
 
 # Local secrets used only to check release binaries. Never commit.
-.release-denylist
+# Trailing * on purpose: a plain `.release-denylist` rule does not cover
+# `.release-denylist.bak-<date>`, and one of those was sitting untracked in
+# this working copy - one `git add -A` from being published.
+.release-denylist*
