@@ -31,6 +31,9 @@ env:
   # Pinned so the compile and the credential audit below run the SAME esphome.
   # A skew between them is exactly where a guard stops proving anything.
   ESPHOME_VERSION: ${{ inputs.esphome_version || 'latest' }}
+  # One place, used by BOTH the compile and the audit below. If they disagree,
+  # the audited config is not the compiled config and the guard proves nothing.
+  LOCAL_BUILD: "false"
 
 jobs:
   build:
@@ -69,6 +72,16 @@ jobs:
         with:
           yaml-file: cgm-display.yaml
           version: ${{ env.ESPHOME_VERSION }}
+          # Marks this as an official image, which is what allows a device to
+          # install it over itself. The config defaults local_build to true, so
+          # ONLY images built here are installable - a hand-built one checks
+          # and notifies but refuses to overwrite its owner's compiled-in
+          # device name, friendly name, encryption key and OTA password.
+          #
+          # If this line is ever dropped, official builds simply stop
+          # self-installing. That is the harmless direction of the two.
+          substitutions: |
+            local_build=${{ env.LOCAL_BUILD }}
 
       # Belt and braces. The runner holds no secrets, so this should be
       # impossible to fail - which is the point: if it ever does fail,
@@ -81,9 +94,20 @@ jobs:
       - name: Prove the build carried no credentials
         run: |
           docker run --rm -v "$PWD":/config -u "$(id -u):$(id -g)" \
-            "ghcr.io/esphome/esphome:${ESPHOME_VERSION}" config cgm-display.yaml \
+            "ghcr.io/esphome/esphome:${ESPHOME_VERSION}" \
+            -s local_build "${LOCAL_BUILD}" config cgm-display.yaml \
             > /tmp/resolved.yaml
           sed -i 's/\x1b\[[0-9;]*m//g' /tmp/resolved.yaml
+          # Prove the marker actually took, rather than trusting that passing
+          # it worked. An official image that quietly built as local would
+          # refuse to install itself and nobody would know why.
+          # esphome emits the value quoted: local_build: 'false'
+          got=$(grep -m1 -E '^  local_build:' /tmp/resolved.yaml | awk '{print $2}' | tr -d "'\"")
+          echo "local_build in the compiled config: ${got}"
+          if [ "$got" != "${LOCAL_BUILD}" ]; then
+            echo "::error::local_build is '$got', expected '${LOCAL_BUILD}'"
+            exit 1
+          fi
           # grep -c and compare the count, never grep -q: under pipefail a -q
           # exits on first match, SIGPIPEs the producer, and a HIT reads as a
           # MISS. That bug shipped twice in make-release.sh.
