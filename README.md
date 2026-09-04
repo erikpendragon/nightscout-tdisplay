@@ -354,6 +354,7 @@ measured against them.
 | **Flip Screen** | Rotates 180°, for when the USB cable has to come out the other side. |
 | **Brightness** | 0–100 %, straight onto the backlight PWM. Default 100. **0 is off** — see below. |
 | **Wake Brightness** | 1–100 %, default 30. The level a button press wakes the screen to while **Brightness** is 0. Does nothing otherwise. |
+| **Full Brightness Out Of Range** | **On by default.** The screen ignores **Brightness** and goes to full whenever the reading is not in range — see below. Turn it off and it stays off. |
 
 **A display set to 0 is off, not lost.** Two things bring it back without the
 web page:
@@ -368,6 +369,27 @@ web page:
 A display set to something dim gets neither: it boots straight to its own level
 and stays there, and pressing buttons only changes pages. Brightness changes
 when you change it, and at no other time.
+
+### No news is good news
+
+Turn on **Full Brightness Out Of Range** and the display stops being a readout
+and becomes a signal. While the reading is in range — the green band — the
+screen does whatever **Brightness** says, including being off. The moment it
+is not in range, the backlight goes to full and stays there until it comes
+back. Dark means fine; lit means go and look.
+
+Set alongside **Brightness 0** it gives you a display that is simply dark all
+day and lights the room when something needs attention.
+
+**Stale counts as not in range, deliberately.** If a device that had silently
+stopped receiving looked exactly like one reporting a good number, then a dark
+screen would mean either "fine" or "dead" and you could not tell which — which
+would make the whole arrangement worse than useless. Dark has to be able to
+mean "I checked, and it is fine". So a stale feed lights the screen too.
+
+> This is still **not an alarm**. It lights a screen. It makes no sound, it
+> will not wake anyone, and it must not be the thing standing between someone
+> and a hypo. Keep your real alarms in Dexcom Follow, xDrip, or Nightscout.
 
 **Hardware Replacement**
 

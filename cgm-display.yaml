@@ -113,7 +113,7 @@ esphome:
   friendly_name: ${friendly_name}
   project:
     name: "erikpendragon.cgm-display"
-    version: "1.0.15"
+    version: "1.0.16"
   on_boot:
     priority: -100
     then:
@@ -815,9 +815,21 @@ script:
     mode: single
     then:
       - lambda: |-
+          // "Normal" is exactly what the main page paints green, deliberately
+          // written to match band_color() in the display lambda: at or above
+          // Low and at or below High. Deriving it a second way here would let
+          // the screen say one thing and the backlight another.
+          //
+          // Stale is never normal - see the switch's comment. So is a reading
+          // we have never had.
+          const bool normal = !id(g_stale) && !isnan(id(g_bg))
+                              && id(g_bg) >= id(n_low).state
+                              && id(g_bg) <= id(n_high).state;
           float pct;
           const char *why;
-          if (id(g_boot_lit))   { pct = 100.0f;             why = " (power-up)"; }
+          if (id(sw_alert_bright).state && !normal)
+                                { pct = 100.0f;             why = " (out of range)"; }
+          else if (id(g_boot_lit)) { pct = 100.0f;          why = " (power-up)"; }
           else if (id(g_woken)) { pct = id(n_wake).state;   why = " (wake)"; }
           else                  { pct = id(n_bright).state; why = ""; }
           // A number that has never been set reads NAN. Full brightness is
@@ -1419,6 +1431,15 @@ interval:
           else if (due(id(g_due_stats),  900000)) id(fetch_stats)->execute();
           else if (due(id(g_due_thresh),1800000)) id(fetch_thresholds)->execute();
 
+  # The backlight has to follow the reading, and nothing else calls
+  # apply_brightness when a fetch lands or when the stale flag flips. Five
+  # seconds is well inside the 30s bg poll, and the script is idempotent -
+  # it recomputes from state and writes the same duty when nothing changed,
+  # so there is no transition to miss and no edge case to get wrong.
+  - interval: 5s
+    then:
+      - script.execute: apply_brightness
+
 binary_sensor:
   - platform: gpio
     pin:
@@ -1601,6 +1622,41 @@ switch:
     id: sw_sep_res
     optimistic: true
     restore_mode: RESTORE_DEFAULT_OFF
+  - platform: template
+    # Turns the display into a signal rather than a readout: while the reading
+    # is in range the screen obeys Brightness (including off), and the moment
+    # it is not, the backlight goes to full until it comes back. Dark means
+    # fine, lit means look at me.
+    #
+    # STALE COUNTS AS NOT NORMAL, and that is the point rather than an
+    # afterthought. If a device that has silently stopped receiving looked
+    # exactly like a device reporting a good number, then "dark" would mean
+    # either "fine" or "dead" and the whole arrangement would be worthless.
+    # Dark has to mean "I checked, and it is fine".
+    #
+    # This is still not an alarm. It lights a screen; it makes no sound and
+    # will not wake anyone. Dexcom Follow keeps doing the alerting.
+    #
+    # ON by default, deliberately. Telling someone that something is wrong is
+    # the reason this display exists, so the safer behaviour is the one you
+    # get without having to know the setting is there. For anyone on the
+    # default Brightness of 100 it changes nothing they can see - full is
+    # already full - so the only displays it alters are the ones somebody
+    # chose to dim, which is exactly the case it is for.
+    #
+    # RESTORE_DEFAULT_ON supplies the default only when there is no stored
+    # value; once you turn it off it stays off across reboots and updates.
+    name: "Full Brightness Out Of Range"
+    web_server:
+      sorting_group_id: grp_disp
+      sorting_weight: 7
+    id: sw_alert_bright
+    optimistic: true
+    restore_mode: RESTORE_DEFAULT_ON
+    turn_on_action:
+      - script.execute: apply_brightness
+    turn_off_action:
+      - script.execute: apply_brightness
   - platform: template
     name: "Flip Screen"
     web_server:
