@@ -455,11 +455,53 @@ manifest it is watching never changes.
 
 ### If you build your own firmware
 
-**Install Update** flashes whatever the manifest points at, so on a device you
-build yourself it will replace your build with the project's — it only ever
-compares version *strings*, so it will do that even when the manifest is behind
-you. Point **Update Manifest URL** at your own release, or clear it to turn
-updates off.
+**A device built by hand will not install a published image over itself.** It
+still checks, and still tells you which version is waiting — it just refuses to
+be the one that flashes it, and points you at your own ESPHome instead.
+
+That is not caution for its own sake. Some settings live on the device and
+survive anything; others are compiled into the image and die the moment a
+different image lands:
+
+| Stored on the device — survives an update | Compiled in — replaced by any image you flash |
+|---|---|
+| wifi, Nightscout URL, token, manifest URL | device name (hostname and mDNS) |
+| every threshold, all three wear-time lifetimes | friendly name |
+| graph hours, idle return, stale after | API encryption key |
+| brightness, wake brightness, and all three switches | OTA password |
+| | units and the threshold slider ranges |
+
+A **factory reset clears the left column, not the right** — it wipes stored
+settings and cannot touch the program image. Taking a stock update does the
+opposite: it keeps your stored settings and discards everything you compiled
+in. That is the trap this exists to close.
+
+So the device carries a marker set at build time, and behaves accordingly:
+
+| How it was built | Checks for updates | Says a version is waiting | Install Update |
+|---|---|---|---|
+| This project's CI | yes | yes | **installs it** |
+| **Your fork's CI**, with **Update Manifest URL** pointed at your fork | yes | yes | **installs yours** |
+| By hand, in your own ESPHome | yes | yes — screen reads `BUILD LOCALLY` | refuses, and says why |
+
+A hand-built device shows `1.0.17 (local build)` as its **Installed Version**,
+directly above the button that will decline, so nothing has to be inferred from
+behaviour.
+
+**The loop for a local build** is then the one you already have: your ESPHome
+pulls this repo (§2 above), so when the device says a version is waiting, you
+press **Install** in ESPHome and it rebuilds *that* version with your own
+substitutions layered back on. You get every change and lose nothing.
+
+**If you want your own binaries to be installable from the web page**, build
+them in CI rather than by hand — fork this repo, let its workflow build them,
+and point **Update Manifest URL** at your fork's channel. The line falls where
+it does for a reason: a CI runner holds no secrets, so its images are safe to
+publish and therefore safe to install. An image with your encryption key in it
+is neither.
+
+Clearing **Update Manifest URL** still turns updates off entirely, on any of
+the three.
 
 ## What it asks Nightscout for
 

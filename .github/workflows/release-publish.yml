@@ -85,7 +85,12 @@ jobs:
           rm -rf docs && cp -R ../main/docs docs
           title=$(gh release view "$TAG" -R "$GITHUB_REPOSITORY" --json name -q '.name')
           [ -n "$title" ] || title="Maintenance release"
-          echo "release title: $title"
+          # Release titles read "1.0.17 - Screen dimming...", but this string
+          # is shown on the device beside the version it already knows, so the
+          # prefix made it say 1.0.17 twice. Strip it if present; a title
+          # without one is left alone.
+          title="${title#"${TAG#v} - "}"
+          echo "manifest summary: $title"
           ./make-release.sh "$title" \
             ../bins/cgm-display.ota.bin \
             ../bins/cgm-display.factory.bin \
