@@ -90,14 +90,28 @@ jobs:
           fi
 
       - name: Assemble manifest and docs/
+        env:
+          BUILD_DIR: ${{ steps.build.outputs.name }}
         run: |
-          summary="${{ github.event.head_commit.message }}"
-          summary=$(printf '%s' "$summary" | head -1)
+          # Locate the images rather than assuming their names. The action
+          # appends the platform variant to BOTH the directory and the files
+          # (cgm-display-esp32/cgm-display-esp32.ota.bin), and that naming is
+          # the action's business, not ours - it has changed before and can
+          # change again. Listing what was found makes any future break
+          # diagnose itself from the log.
+          echo "build dir: $BUILD_DIR"
+          ls -l "$BUILD_DIR"
+          ota=$(find "$BUILD_DIR" -name '*.ota.bin' | head -1)
+          factory=$(find "$BUILD_DIR" -name '*.factory.bin' | head -1)
+          echo "ota=$ota"
+          echo "factory=$factory"
+          if [ -z "$ota" ] || [ -z "$factory" ]; then
+            echo "::error::could not find both images in $BUILD_DIR"
+            exit 1
+          fi
+          summary=$(git log -1 --pretty=%s)
           [ -n "$summary" ] || summary="Maintenance release"
-          ./make-release.sh "$summary" \
-            "${{ steps.build.outputs.name }}/cgm-display.ota.bin" \
-            "${{ steps.build.outputs.name }}/cgm-display.factory.bin" \
-            /tmp/resolved.yaml
+          ./make-release.sh "$summary" "$ota" "$factory" /tmp/resolved.yaml
 
       # Always uploaded, tag or dry run. This is what you inspect.
       - name: Upload for inspection
