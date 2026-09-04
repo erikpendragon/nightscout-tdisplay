@@ -37,6 +37,12 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
+        with:
+          # Not shallow: a default fetch brings the tag REF but not the
+          # annotated tag OBJECT, so %(contents:subject) comes back empty and
+          # the release silently falls back to the last commit subject. That
+          # produced the title "1.0.16 - Move upload-artifact to v7".
+          fetch-depth: 0
 
       # The tag and the config must agree on the version. This is the guard
       # that would have caught "1.0.13", which shipped 1.0.12 successfully and
@@ -120,12 +126,13 @@ jobs:
           # release-publish.yml from the RELEASE TITLE, which is the value
           # that actually reaches devices - this one only labels the draft.
           summary=""
-          if [ -n "${GITHUB_REF_NAME:-}" ] && git rev-parse -q --verify "refs/tags/$GITHUB_REF_NAME" >/dev/null 2>&1; then
-            summary=$(git tag -l --format='%(contents:subject)' "$GITHUB_REF_NAME" 2>/dev/null || true)
+          if [ -n "${GITHUB_REF_NAME:-}" ]; then
+            summary=$(git for-each-ref "refs/tags/$GITHUB_REF_NAME" --format='%(contents:subject)' 2>/dev/null || true)
           fi
           [ -n "$summary" ] || summary=$(git log -1 --pretty=%s)
           [ -n "$summary" ] || summary="Maintenance release"
           echo "summary: $summary"
+          echo "RELEASE_SUMMARY=$summary" >> "$GITHUB_ENV"
           ./make-release.sh "$summary" "$ota" "$factory" /tmp/resolved.yaml
 
       # Always uploaded, tag or dry run. This is what you inspect.
@@ -155,7 +162,7 @@ jobs:
             echo "Publishing this release updates the device update channel."
           } > /tmp/notes.md
           gh release create "$GITHUB_REF_NAME" --draft \
-            --title "$v - $(git log -1 --pretty=%s)" \
+            --title "$v - ${RELEASE_SUMMARY}" \
             --notes-file /tmp/notes.md \
             "docs/cgm-display.factory.bin#cgm-display.factory.bin (full image - flash a blank board)" \
             "docs/cgm-display.ota.bin#cgm-display.ota.bin (app only - for the device's own update)"
