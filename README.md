@@ -261,6 +261,35 @@ That list-versus-mapping distinction is the only fiddly part, and getting it
 wrong fails in different ways: a duplicated OTA platform, or a clobbered api
 block.
 
+**To change what is compiled in**, add a `substitutions:` block. Yours override
+the project's, and you list only what you want changed:
+
+```yaml
+substitutions:
+  device_name: kitchen-cgm        # hostname and mDNS: kitchen-cgm.local
+  friendly_name: Kitchen CGM
+```
+
+Nothing on the device's web page needs to be here — Nightscout URL, token,
+thresholds, brightness and lifetimes are all stored on the device and survive
+updates. Substitutions are for the handful of things that cannot be, and
+`device_name` is the one with a sting: there is no runtime setter, so changing
+it later means a reflash **and** Home Assistant treats the board as a new
+device, leaving the old entities behind.
+
+For **mg/dL**, switch the whole block together — the threshold sliders take
+their ranges at compile time, so changing the units alone leaves sliders that
+cannot reach your numbers. `example-local.yaml` has the full set ready to
+uncomment.
+
+Do **not** set `local_build` yourself. It defaults to `true`, and that is what
+stops a published image being installed over the top and discarding everything
+above — see [If you build your own firmware](#if-you-build-your-own-firmware).
+
+Consider `refresh: always` rather than `1d`: ESPHome otherwise re-fetches only
+when its cached copy is a day old, so a build shortly after an upstream change
+quietly uses the stale copy and produces the previous version with no error.
+
 [`example-local.yaml`](example-local.yaml) is the whole thing ready to copy.
 
 ### 3. Build it yourself with ESPHome

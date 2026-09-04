@@ -16,9 +16,63 @@
 packages:
   nightscout_tdisplay:
     url: https://github.com/erikpendragon/nightscout-tdisplay
+    # `main` is the newest code, which may include work that has not been
+    # released yet. `ref: v1.0.17` pins you to exactly what everyone else is
+    # running, and you bump it when you choose to.
     ref: main
     files: [cgm-display.yaml]
-    refresh: 1d
+    # ESPHome caches the download and re-fetches only when the copy is older
+    # than this, so with `1d` a build minutes after an upstream change quietly
+    # uses yesterday's copy and you get the old version with no error at all.
+    # `always` costs a few seconds per build and removes that surprise.
+    refresh: always
+
+# ---------------------------------------------------------------------------
+# SUBSTITUTIONS - the settings that are compiled in rather than stored on the
+# device, so they are yours only for as long as you build the firmware.
+#
+# A substitution here overrides the project's. List only what you want to
+# change; anything you leave out keeps the upstream value.
+#
+# Everything on the device's web page - Nightscout URL, token, thresholds,
+# brightness, lifetimes - is stored on the device and needs nothing here.
+# ---------------------------------------------------------------------------
+# substitutions:
+#   # Hostname and mDNS name: the board answers to kitchen-cgm.local. There is
+#   # no runtime setter, so changing it means a rebuild and reflash - and Home
+#   # Assistant treats the result as a NEW device, leaving the old entities
+#   # behind as unavailable.
+#   device_name: kitchen-cgm
+#   friendly_name: Kitchen CGM
+#
+#   # Where THIS device looks for firmware updates. Point it at your own fork's
+#   # channel if you publish your own builds. It is also a field on the web
+#   # page, so you can change it later without a rebuild - this only sets the
+#   # value a freshly flashed board starts with.
+#   fw_manifest: "https://you.github.io/nightscout-tdisplay/manifest.json"
+#
+#   # mg/dL. The project defaults to mmol/L, and the threshold sliders need
+#   # compile-time ranges, so switch the WHOLE block together - change the
+#   # units alone and the sliders will not reach your numbers.
+#   bg_units: "mg/dL"
+#   th_step:  "1"
+#   ul_init:  "55"   # urgent low
+#   ul_min:   "40"
+#   ul_max:   "110"
+#   lo_init:  "70"   # low
+#   lo_min:   "45"
+#   lo_max:   "125"
+#   hi_init:  "180"  # high
+#   hi_min:   "110"
+#   hi_max:   "290"
+#   uh_init:  "250"  # urgent high
+#   uh_min:   "145"
+#   uh_max:   "450"
+#
+#   # Do NOT set local_build here. It defaults to true, and that is what stops
+#   # a published image being installed over the top and discarding everything
+#   # in this file. Only this project's CI sets it to false, because only a CI
+#   # runner is guaranteed to hold no secrets.
 
 # ---------------------------------------------------------------------------
 # Everything below is OPTIONAL. Delete it and the device still works - it just
