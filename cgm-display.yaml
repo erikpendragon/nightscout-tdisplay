@@ -40,8 +40,11 @@
 # alarms - do not rely on it to wake anyone up.
 #
 # Hardware: LilyGO T-Display, ESP32-D0WDQ6-V3, ST7789V 135x240.
-# GPIO4 is the backlight and is owned by the TTGO_TDISPLAY_135X240 preset -
-# declaring an output on it is a fatal config error, not a warning.
+# GPIO4 is the backlight. The TTGO_TDISPLAY_135X240 preset claims it as a
+# plain on/off pin, and for as long as it does, declaring an output on GPIO4
+# as well is a fatal config error, not a warning. `backlight_pin: false` on
+# the display block hands the pin back so an ledc channel can dim it - that
+# is the whole trick behind the Brightness slider.
 
 substitutions:
   # ---- naming -------------------------------------------------------------
@@ -110,10 +113,27 @@ esphome:
   friendly_name: ${friendly_name}
   project:
     name: "erikpendragon.cgm-display"
-    version: "1.0.14"
+    version: "1.0.15"
   on_boot:
     priority: -100
     then:
+      # Power-up brightness. A resting level of 0 would mean a board that
+      # looks dead while it joins wifi and fetches its first reading, so an
+      # off display comes up at full and drops to off once data has landed.
+      # A dim resting level is already visible, so it is left exactly where
+      # it is - no flare on every reboot.
+      #
+      # Numbers are restored at DATA priority, which is well before this
+      # priority -100 block, so n_bright.state is the saved value here.
+      # NAN (never set) is not < 0.5, so an unconfigured board takes the
+      # ordinary path and apply_brightness falls back to full.
+      - lambda: 'id(g_boot_lit) = (id(n_bright).state < 0.5f);'
+      - script.execute: apply_brightness
+      - if:
+          condition:
+            lambda: 'return id(g_boot_lit);'
+          then:
+            - script.execute: boot_bright_hold
       - lambda: |-
           id(disp).set_rotation(id(g_flip) ? DISPLAY_ROTATION_270_DEGREES
                                            : DISPLAY_ROTATION_90_DEGREES);
@@ -495,6 +515,56 @@ number:
     step: 1
     unit_of_measurement: "min"
     mode: box
+  - platform: template
+    # Resting backlight brightness. 0 is genuinely off - the screen goes
+    # black - but it is not a display you have lost: it comes up at full on
+    # every power-up until the first reading lands, and either button lights
+    # it at Wake Brightness for one Idle Return.
+    name: "Brightness"
+    web_server:
+      sorting_group_id: grp_disp
+      sorting_weight: 5
+    id: n_bright
+    optimistic: true
+    restore_value: true
+    initial_value: 100
+    min_value: 0
+    max_value: 100
+    step: 1
+    unit_of_measurement: "%"
+    mode: slider
+    on_value:
+      # A deliberate change from this page always wins: it ends the power-up
+      # override and any button wake, and what you dragged to is what you
+      # get, immediately. Restoring at boot lands here too, which is
+      # harmless - both flags are already false at that point.
+      - lambda: |-
+          id(g_boot_lit) = false;
+          id(g_woken) = false;
+      - script.execute: apply_brightness
+  - platform: template
+    # Only does anything while Brightness is 0. Either button then lights the
+    # screen at this level for one Idle Return, so the number can be read in
+    # the dark without lighting the room, and it goes back off by itself.
+    #
+    # Minimum is 1, not 0: a wake level of 0 is a button that does nothing.
+    name: "Wake Brightness"
+    web_server:
+      sorting_group_id: grp_disp
+      sorting_weight: 6
+    id: n_wake
+    optimistic: true
+    restore_value: true
+    initial_value: 30
+    min_value: 1
+    max_value: 100
+    step: 1
+    unit_of_measurement: "%"
+    mode: slider
+    # No flag clearing here - dragging this while the screen is awake should
+    # change the wake level you are looking at, not end the wake.
+    on_value:
+      - script.execute: apply_brightness
 
 globals:
   # Scheduler slots - millis() at which each fetch next becomes due. Zero
@@ -675,6 +745,19 @@ globals:
     type: int
     restore_value: false
     initial_value: '0'
+  # The backlight is normally just "whatever Brightness says". These are the
+  # only two reasons it is ever something else, and they end differently: the
+  # power-up override ends when the first reading lands, a button wake ends
+  # when the page timeout returns to the main page. Neither is restored -
+  # both describe this boot only.
+  - id: g_boot_lit
+    type: bool
+    restore_value: false
+    initial_value: 'false'
+  - id: g_woken
+    type: bool
+    restore_value: false
+    initial_value: 'false'
   - id: g_flip
     type: bool
     restore_value: true
@@ -717,6 +800,83 @@ globals:
     initial_value: 'false'
 
 script:
+  # The one place that drives the backlight. Every path that can change it -
+  # either slider, a button press, the page timeout, power-up - sets the two
+  # flags and then calls this, so the level is always a function of state and
+  # never something a caller decided for itself.
+  #
+  # The web page asks for 0-100 because that is what a person means by
+  # brightness. LEDC wants a 0.0-1.0 float. The 8-bit step in between is
+  # deliberate rather than incidental: 0-100 maps onto 0-255 and nothing
+  # finer, so the log line says exactly what duty the pin is carrying, and
+  # two neighbouring slider positions landing on the same duty is expected -
+  # 101 positions over 256 steps cannot be one-to-one.
+  - id: apply_brightness
+    mode: single
+    then:
+      - lambda: |-
+          float pct;
+          const char *why;
+          if (id(g_boot_lit))   { pct = 100.0f;             why = " (power-up)"; }
+          else if (id(g_woken)) { pct = id(n_wake).state;   why = " (wake)"; }
+          else                  { pct = id(n_bright).state; why = ""; }
+          // A number that has never been set reads NAN. Full brightness is
+          // the safe way to fail here: a display nobody can read is worse
+          // than one that is too bright.
+          if (isnan(pct)) pct = 100.0f;
+          pct = fminf(100.0f, fmaxf(0.0f, pct));
+          uint8_t duty = (uint8_t) lroundf(pct * 255.0f / 100.0f);
+          id(out_backlight).set_level(duty / 255.0f);
+          ESP_LOGI("cgm", "backlight %.0f%% -> pwm %u/255%s", pct, duty, why);
+
+  # Holds the power-up brightness until the device has something to show.
+  # "Booted and gathered data" is the first reading landing, not a fixed
+  # delay, so a slow wifi join does not cut the screen off early.
+  #
+  # The 90s backstop covers the case where it never lands: a device that
+  # cannot reach Nightscout would otherwise sit at full brightness all night,
+  # and its owner has already said they want this one off. Only ever runs
+  # when the resting level is 0 - see on_boot.
+  - id: boot_bright_hold
+    mode: single
+    then:
+      - wait_until:
+          condition:
+            lambda: 'return id(g_have);'
+          timeout: 90s
+      - lambda: 'id(g_boot_lit) = false;'
+      - script.execute: apply_brightness
+
+  # Both buttons come through here. dir is +1 for the top button and -1 for
+  # the bottom one; adding n before the modulo keeps -1 from indexing off the
+  # front.
+  - id: page_step
+    mode: single
+    parameters:
+      dir: int
+    then:
+      - lambda: |-
+          // "Dark" is the resting level being off with nothing currently
+          // overriding it. The first press then only wakes the screen and
+          // does not also move the page: at 3am you press a button to read
+          // the number, and landing on the graph would mean six more presses
+          // to get back to it.
+          if (id(n_bright).state < 0.5f && !id(g_boot_lit) && !id(g_woken)) {
+            id(g_woken) = true;
+          } else {
+            // Lit already, so this press is navigation. If the power-up
+            // override is what is lighting it, mark it woken as well -
+            // otherwise the handover when the first reading lands would
+            // black the screen out mid-look. On a display with a resting
+            // level above 0 this leaves g_woken false, which is what keeps
+            // page changes from touching brightness at all.
+            if (id(g_boot_lit)) id(g_woken) = true;
+            const int n = id(g_stale) ? 8 : 7;
+            id(g_page) = (id(g_page) + dir + n) % n;
+          }
+      - script.execute: apply_brightness
+      - script.execute: page_timeout
+
   - id: flip_screen
     mode: single
     then:
@@ -734,7 +894,14 @@ script:
       # longer before snapping back. Deliberately not user-settable.
       - delay: !lambda |-
           return (uint32_t)((id(g_stale) ? 30.0f : id(n_idle).state) * 1000);
-      - lambda: 'id(g_page) = 0;'
+      - lambda: |-
+          id(g_page) = 0;
+          // Only a screen that was woken from off goes back off here. A dim
+          // resting level is left exactly where it was: cycling pages must
+          // never change brightness. If the power-up override is still up it
+          // outranks this and the screen stays lit until data lands.
+          id(g_woken) = false;
+      - script.execute: apply_brightness
 
   - id: fetch_bg
     mode: single
@@ -1270,8 +1437,9 @@ binary_sensor:
             then:
               - script.execute: flip_screen
             else:
-              - lambda: 'id(g_page) = (id(g_page) + 1) % (id(g_stale) ? 8 : 7);'
-              - script.execute: page_timeout
+              - script.execute:
+                  id: page_step
+                  dir: 1
   - platform: gpio
     pin:
       number: GPIO0
@@ -1289,8 +1457,9 @@ binary_sensor:
             then:
               - script.execute: flip_screen
             else:
-              - lambda: 'id(g_page) = (id(g_page) + (id(g_stale) ? 7 : 6)) % (id(g_stale) ? 8 : 7);'
-              - script.execute: page_timeout
+              - script.execute:
+                  id: page_step
+                  dir: -1
 
 sensor:
   - platform: wifi_signal
@@ -1487,6 +1656,19 @@ text_sensor:
         sorting_group_id: grp_diag
         sorting_weight: 1
 
+# The backlight, driven as PWM instead of on/off. See `backlight_pin: false`
+# in the display block below - the two go together, and GPIO4 cannot be
+# claimed twice.
+#
+# 5 kHz is well clear of anything the eye reads as flicker, and LEDC still
+# has better than 8000 duty steps at that frequency on this chip, far more
+# than the 256 the slider asks for.
+output:
+  - platform: ledc
+    id: out_backlight
+    pin: GPIO4
+    frequency: 5000Hz
+
 spi:
   clk_pin: GPIO18
   mosi_pin: GPIO19
@@ -1572,6 +1754,9 @@ display:
   - platform: st7789v
     id: disp
     model: TTGO_TDISPLAY_135X240
+    # Refuse the preset's GPIO4 backlight pin so the ledc output above can
+    # have it. Without this the pin is declared twice and the build fails.
+    backlight_pin: false
     cs_pin: GPIO5
     dc_pin: GPIO16
     reset_pin: GPIO23

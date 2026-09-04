@@ -28,6 +28,12 @@ button moves forward, the bottom button moves back, **both together flip the
 screen 180°** (for when the USB cable has to come out the other side), and
 after a configurable idle time it returns to the main page.
 
+If **Brightness** is set to 0 the screen is off, and the first press of either
+button only wakes it — at **Wake Brightness**, on the main page, for one
+**Idle Return**. Cycle pages from there if you want; when it times out back to
+the main page it goes dark again. On a display that is merely dim, buttons
+never change the brightness at all.
+
 | Page | Contents |
 |---|---|
 | **Main** | Current value, trend arrow, last delta, reading age. Whole-screen colour band. |
@@ -346,6 +352,22 @@ measured against them.
 | **Stale After** | Minutes before the display goes greyscale and says STALE. 15 is a reasonable start. |
 | **Idle Return** | Seconds of no button input before it returns to the main page. Default 15. |
 | **Flip Screen** | Rotates 180°, for when the USB cable has to come out the other side. |
+| **Brightness** | 0–100 %, straight onto the backlight PWM. Default 100. **0 is off** — see below. |
+| **Wake Brightness** | 1–100 %, default 30. The level a button press wakes the screen to while **Brightness** is 0. Does nothing otherwise. |
+
+**A display set to 0 is off, not lost.** Two things bring it back without the
+web page:
+
+- **Power-up.** It comes up at full brightness and stays there until the first
+  reading lands, so a board joining wifi never looks dead. Then it goes dark.
+  (If no reading arrives at all it gives up after 90 seconds and goes dark
+  anyway, rather than sitting lit all night.)
+- **Either button.** Wakes at **Wake Brightness** for one **Idle Return**, then
+  back to dark.
+
+A display set to something dim gets neither: it boots straight to its own level
+and stays there, and pressing buttons only changes pages. Brightness changes
+when you change it, and at no other time.
 
 **Hardware Replacement**
 
