@@ -190,9 +190,12 @@ That is fine; it is the same clock that stamped the data.
 
 That is the entire bill of materials. Nothing to solder, no wiring diagram.
 
-> **GPIO4 is the backlight** and is claimed by the `TTGO_TDISPLAY_135X240`
-> preset. Declaring your own output on it is a **fatal** config error, not a
-> warning. This is why there is no brightness control.
+> **GPIO4 is the backlight**, and the `TTGO_TDISPLAY_135X240` preset claims it
+> as a plain on/off pin. While it does, declaring your own output on GPIO4 is a
+> **fatal** config error, not a warning — so the pin has to be handed over
+> rather than shared. `backlight_pin: false` on the display makes the preset let
+> go of it, which frees an `ledc` channel to drive the same pin as PWM. That is
+> what **Brightness** is.
 
 ---
 
