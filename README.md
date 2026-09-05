@@ -40,7 +40,7 @@ never change the brightness at all.
 | **Graph** | Configurable 1–24 h, labelled Y axis, all four threshold lines. |
 | **Treatments** | Last three carb/insulin entries with ages, insulin and carbs still on board, and 24 h totals. |
 | **Stats** | Time in range / low / high as percentages, min / max / average, feed coverage. |
-| **Diagnostics** | IP, wifi RSSI, uptime, free heap, detected units, installed firmware — and **UPDATE AVAILABLE** in red when there is one. |
+| **Diagnostics** | IP, wifi RSSI, uptime, free heap, detected units, installed firmware — and **UPDATE AVAILABLE** in red when there is one (**BUILD LOCALLY** on a hand-built image). |
 | **Wear time** | Pod, sensor and reservoir: time used, **time left**, coloured as each nears its life. |
 | **Recent alerts** | Last 5 pump/CGM alarms with how long ago, tagged `DEV` or `BG`. |
 
@@ -201,7 +201,7 @@ That is the entire bill of materials. Nothing to solder, no wiring diagram.
 
 ## Install
 
-Two ways in. The first needs nothing but a USB cable.
+Three ways in. The first needs nothing but a USB cable.
 
 ### 1. Flash the pre-built firmware
 
@@ -234,8 +234,13 @@ packages:
     url: https://github.com/erikpendragon/nightscout-tdisplay
     ref: main
     files: [cgm-display.yaml]
-    refresh: 1d
+    refresh: always
 ```
+
+`refresh: always` re-fetches on every build. With ESPHome's default of `1d` it
+re-fetches only once its cached copy is a day old, so a build shortly after an
+upstream change quietly uses the stale copy and produces the *previous* version
+with no error anywhere — which is a genuinely confusing hour.
 
 Two support files must sit next to that stub, because ESPHome resolves
 `includes:` and `js_include:` relative to your config directory rather than
@@ -289,10 +294,6 @@ Do **not** set `local_build` yourself. It defaults to `true`, and that is what
 stops a published image being installed over the top and discarding everything
 above — see [If you build your own firmware](#if-you-build-your-own-firmware).
 
-Consider `refresh: always` rather than `1d`: ESPHome otherwise re-fetches only
-when its cached copy is a day old, so a build shortly after an upstream change
-quietly uses the stale copy and produces the previous version with no error.
-
 [`example-local.yaml`](example-local.yaml) is the whole thing ready to copy.
 
 ### 3. Build it yourself with ESPHome
@@ -326,14 +327,28 @@ the mg/dL values are there, commented out. The display detects mg/dL vs mmol/L
 from Nightscout by itself; the block only sets sensible ranges for the
 threshold fields.
 
+A firmware you build this way marks itself as a local build, so it will tell
+you when a new version is out but will not install it over itself — updating is
+`esphome run` again, which rebuilds the new version with your changes intact.
+[If you build your own firmware](#if-you-build-your-own-firmware) explains why.
+
 ### About credentials
 
-There is no `secrets.yaml` to fill in. **The config and the compiled firmware
-contain no credentials of any kind** — not wifi, not an API key, not an OTA
-password. Everything the device needs is entered on the device itself and
-lives in its flash, never in the image. So the published binary is safe for
-anyone to download, and an update can never carry somebody else's wifi
-password into your device.
+**The published firmware contains no credentials of any kind** — not wifi, not
+an API key, not an OTA password. There is no `secrets.yaml` to fill in, and the
+release images are built by CI on a machine that holds no secrets, so there is
+nothing to bake in even by accident. Everything the device needs is entered on
+the device itself and lives in its flash, never in the image. The published
+binary is safe for anyone to download, and an update can never carry somebody
+else's wifi password onto your device.
+
+**A firmware you build yourself is a different matter — and that is the point.**
+If you want an OTA password, or an encrypted connection to Home Assistant, add
+them to your own config: [§2](#2-follow-this-repo-from-your-own-esphome) shows
+exactly how, and [`example-local.yaml`](example-local.yaml) is ready to copy.
+Those values are compiled into *your* image, which is precisely why a hand-built
+device refuses to install a published one over the top — see
+[If you build your own firmware](#if-you-build-your-own-firmware).
 
 > **A configured board is a different matter.** Once you have set it up, its
 > flash holds your wifi credentials, your Nightscout URL and your token — and
@@ -461,14 +476,16 @@ their own Nightscout without ever installing ESPHome.
 
 ## Updating
 
-Every 6 hours the device fetches a manifest from the URL in `fw_manifest:` at
-the top of the config and compares it with what is installed. Its web page
+Every 6 hours the device fetches a manifest from **Update Manifest URL** on its
+web page and compares it with what is installed. That field is a setting like
+any other — `fw_manifest:` in the config only supplies what a freshly flashed
+board starts with. Its web page
 shows four things under **Updates**:
 
 | | |
 |---|---|
-| **Installed Version** | what is running right now |
-| **Update Status** | `Up to date`, `Update available: 1.1.0`, or why a check failed |
+| **Installed Version** | what is running right now — with `(local build)` appended on a hand-built image |
+| **Update Status** | `Up to date`, `Update available: 1.1.0`, or why a check failed. On a hand-built image: `1.1.0 available - press Install in your own ESPHome` |
 | **Check for Updates** | asks now, rather than waiting up to six hours |
 | **Install Update** | downloads and reboots — nothing happens until you press it |
 
@@ -516,7 +533,7 @@ different image lands:
 | wifi, Nightscout URL, token, manifest URL | device name (hostname and mDNS) |
 | every threshold, all three wear-time lifetimes | friendly name |
 | graph hours, idle return, stale after | API encryption key |
-| brightness, wake brightness, and all three switches | OTA password |
+| brightness, wake brightness, and all four switches | OTA password |
 | | units and the threshold slider ranges |
 
 A **factory reset clears the left column, not the right** — it wipes stored
