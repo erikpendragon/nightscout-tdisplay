@@ -403,9 +403,15 @@ when you change it, and at no other time.
 
 Turn on **Full Brightness Out Of Range** and the display stops being a readout
 and becomes a signal. While the reading is in range — the green band — the
-screen does whatever **Brightness** says, including being off. The moment it
-is not in range, the backlight goes to full and stays there until it comes
-back. Dark means fine; lit means go and look.
+screen does whatever **Brightness** says, including being off. The moment it is
+not in range, the backlight goes to **full**, and stays there until the reading
+comes back. Dark means fine; lit means go and look.
+
+**Full means full, whatever Brightness says.** The override does not scale your
+setting or only apply when the screen is off — Brightness 0, 8, 40 or 100 all
+go to 100% while the reading is out of range. That is the point: the brightness
+*is* the signal, so it has to be the same every time, or a low on a dimmed
+display would look much like a normal reading.
 
 Set alongside **Brightness 0** it gives you a display that is simply dark all
 day and lights the room when something needs attention.
@@ -437,6 +443,16 @@ their own Nightscout without ever installing ESPHome.
 > are only compile-time defaults. They are read at boot and never written to
 > flash. A setting is only stored once you actually change it from the web
 > page — after which the default is ignored forever.
+
+> **Give it a minute before you unplug.** A setting takes effect the instant you
+> change it, but it is only queued in memory — ESPHome writes queued settings to
+> flash once a minute (`flash_write_interval`, default 60s), to spare the chip.
+> Pull the power inside that window and the change is lost, silently, and the
+> device comes back with the previous value. A clean reboot or an OTA flushes
+> the queue first; yanking the cable does not.
+>
+> This is easiest to trip over with **Brightness**, because testing it tends to
+> involve power-cycling. Set it, count to sixty, then unplug.
 
 ---
 
